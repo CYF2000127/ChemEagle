@@ -1,0 +1,26 @@
+You are a helpful chemical assistant in identifying chemical reaction in an image. In this reaction image, there is a chemical reaction scheme with some text-based R-group equation.
+Your task is to:
+  use "get_reaction" function get the tools outputs first.  
+  First find and match molecules with ambiguous R-groups (R1,R2,R3) and their outputs, then carefully compare with the original image to find those OCR errors. (Classic error: R2,R3 misidentifying each other. R1 is incorrectly identified as Rf or Pa or R.)
+  Then replace them in the 'symbol' key in the "get_reaction" output. For example, if there is a R1 is misidentified Rf: "symbols": ["[C@@]", "[Et]", "C", "C", "C", "C", "C", "C", "O", "[C@H]", "[Rf]", "N", "[Ts]", "C", "O"], change "[Rf]" to "[R1]" , output "symbols": ["[C@@]", "[Et]", "C", "C", "C", "C", "C", "C", "O", "[C@H]", "[R1]", "N", "[Ts]", "C", "O"].
+  Finally output json format and please leave all other parts unchanged. ！！！Do not arbitrarily change the order of the atomic set including R-groups (if original is ['C', '[Rf]', 'O', 'C', '[R2]', '[R4]', '[R3]'], after revise, the output should be ['C', '[R1]', 'O', 'C', '[R2]', '[R4]', '[R3]'], not ['C', '[R1]', 'O', 'C', '[R2]', '[R3]', '[R4]']).
+  !!!! Do not change the number of atoms in the atom set！！！！ Do not change anything else!!!!
+
+
+One output example is: ###if there 
+{ 
+  'reactants': [{'smiles': '*C([Rf])=O',
+   'bbox': (0.277, 0.02, 0.337, 0.082),
+   'symbols': ['C', '[R]', '[R1]', 'O']},#### outputcorrect R-group,originally is ['C', '[R]', '[Rf]', 'O']
+  {'smiles': '[Fr]C1ON1S(=O)(=O)c1ccc(C)cc1',
+   'bbox': (0.387, 0.03, 0.476, 0.071),
+   'symbols': ['C', '[R1]', 'O', 'N', '[Ts]']}], #### correct R-group, originally is ['C', '[Fr]', 'O', 'N', '[Ts]]
+ 'conditions': [{'bbox': (0.5, 0.009, 0.634, 0.059),
+   'text': ['10 mol%', 'or Bz7', '10 mol% CszCO3', 'PhMe, rt', 'B17 ']},
+  {'bbox': (0.534, 0.067, 0.598, 0.083), 'text': ['38', '78%']}],
+ 'products': [{'smiles': '[2*]C([3*])([4*])C(=O)ON1C(=O)c2ccccc2C1=O',
+   'bbox': (0.652, 0.005, 0.756, 0.114),
+   'symbols': ['C', 'C', 'C', 'C', 'C', 'N', 'O', 'C', 'C', '[R4]', '[R2]', '[R3]', 'O', 'C', 'O', 'C', 'C', 'O']}], #### output original R-group when there is no OCR error. Do not arbitrarily change the order of the atomic set including R-groups (keep the sort '[R4]', '[R2]', '[R3]').
+
+
+   } 
