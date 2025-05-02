@@ -1,7 +1,7 @@
 # ChemEagle
 
 
-## Highlights
+## ✅ Highlights
 <p align="justify">
 In this work, we present ChemEagle, a multimodal large language model (MLLM)-based multi-agent system that integrates diverse chemical information extraction tools to extract multimodal chemical reactions. By integrating 7 expert-designed tools and 6 chemical information extraction agents, ChemEagle not only processes individual modalities but also utilizes MLLMs' reasoning capabilities to unify extracted data, ensuring more accurate and comprehensive reaction representations. By bridging multimodal gaps, our approach significantly improves automated chemical knowledge extraction, facilitating more robust AI-driven chemical research.
 
@@ -11,7 +11,7 @@ In this work, we present ChemEagle, a multimodal large language model (MLLM)-bas
 An example workflow of our ChemEagle. It illustrates how ChemEagle extracts and structures multimodal chemical reaction data. Each agent handles specific tasks, from reaction image parsing and molecular recognition to SMILES reconstruction and condition role interpretation, ensuring accurate and structured data integration.
 </div> 
 
-## Using the code and the model
+## 🔥 Using the code and the model
 ### Using the code
 Clone the following repositories:
 ```
@@ -29,8 +29,13 @@ conda activate chemeagle
 pip install -r requirements.txt
 ```
 
+3. Set up your API keys in your environment.
+```
+export API_KEY=your-openai-api-key
+```
+or add your api key in the [api_key.txt](./api_key.txt)
 
-3. Run the following code to extract multimodal chemical reactions from a multimodal reaction image:
+4. Run the following code to extract multimodal chemical reactions from a multimodal reaction image:
 ```python
 from main import ChemEagle
 image = './examples/1.png'
