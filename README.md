@@ -24,20 +24,20 @@ conda create -n chemeagle python=3.10
 conda activate chemeagle
 ```
 
-2. Then Install requirements:
+2. Then install requirements:
 ```
 pip install -r requirements.txt
 ```
 
-3. Set up your API keys in your environment.or add your api key in the [api_key.txt](./api_key.txt)
+3. Set up your API keys in your environment.
 ```
 export API_KEY=your-openai-api-key
 ```
-
+Alternatively, add your API keys in the [api_key.txt](./api_key.txt)
 
 4. Run the following code to extract multimodal chemical reactions from a multimodal reaction image:
 ```python
 from main import ChemEagle
-image = './examples/1.png'
+image_path = './examples/1.png'
 results = ChemEagle(image_path)
 print(results)
