@@ -45,9 +45,9 @@ print(results)
 
 The input is a multimodal chemical reaction image:
 ![visualization](examples/1.png)
-<div align="center",width="50">
-Example input multimodal chemical reaction image.
+<div align="center",width="100">
 </div> 
+
 The output dictionary is a complete reaction list with reactant SMILES, product SMILES, and detailed conditions for every reaction in the image:
 
 ``` 
