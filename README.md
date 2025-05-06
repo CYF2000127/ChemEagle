@@ -12,9 +12,9 @@ An example workflow of our ChemEagle. It illustrates how ChemEagle extracts and 
 </div> 
 
 
-## 🤗 Multimodal chemical information extraction using [ChemEagle.Web](https://huggingface.co/spaces/CYF200127/RxnIM) 
+## 🤗 Multimodal chemical information extraction using [ChemEagle.Web](https://huggingface.co/spaces/CYF200127/ChemEagle) 
 
-Go to our [ChemEagle.Web demo](https://huggingface.co/spaces/CYF200127/RxnIM) to directly use our tool online!
+Go to our [ChemEagle.Web demo](https://huggingface.co/spaces/CYF200127/ChemEagle) to directly use our tool online!
 
 The input is a multimodal chemical reaction image:
 ![visualization](examples/1.png)
@@ -37,7 +37,7 @@ The output dictionary is a complete reaction list with reactant SMILES, product 
 "products":[{"smiles":"CC[C@]1(c2ccccc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O","label":"3a"}],
 "additional_info":[{"text":"14:1 dr, 91% ee"}]},
 
-{"reaction_id":"2_1",... ###More Detailed reactions}
+{"reaction_id":"2_1",... ###More detailed reactions}
 ]
 }
 ``` 
