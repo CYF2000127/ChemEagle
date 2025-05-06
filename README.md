@@ -41,6 +41,7 @@ from main import ChemEagle
 image_path = './examples/1.png'
 results = ChemEagle(image_path)
 print(results)
+```
 
 The input is a multimodal chemical reaction image:
 ![visualization](examples/1.png)
