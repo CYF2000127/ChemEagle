@@ -168,22 +168,6 @@ def action_observer_agent(image_path: str, tool_result: Any) -> bool:
 
 
 def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, **kwargs):
-    """
-    通用的 API 调用重试函数，支持指数退避策略。
-    
-    Args:
-        func: 要调用的函数
-        max_retries: 最大重试次数
-        base_delay: 基础延迟时间（秒）
-        backoff_factor: 退避因子（每次重试延迟时间 = base_delay * backoff_factor^attempt）
-        *args, **kwargs: 传递给 func 的参数
-    
-    Returns:
-        func 的返回值
-    
-    Raises:
-        最后一次尝试的异常
-    """
     last_exception = None
     
     for attempt in range(max_retries):
@@ -225,19 +209,7 @@ def plan_observer_agent_OS(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> List[Any]:
-    """
-    OS 版本的 plan_observer_agent，使用兼容 OpenAI Chat Completions 协议的本地/自建模型。
 
-    Args:
-        image_path: 图像文件路径
-        tool_calls: 当前工具调用计划列表
-        model_name: 本地模型名称（默认 `/models/Qwen3-VL-32B-Instruct-AWQ`）
-        base_url: OpenAI 兼容接口地址，若为 None 则使用环境变量或默认值 `http://localhost:8000/v1`
-        api_key: 接口密钥，可为任意非空字符串（vLLM 默认可填 `"EMPTY"`）
-
-    Returns:
-        List[Any]: 审查后的工具调用计划列表
-    """
     base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
     api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
 
@@ -305,19 +277,7 @@ def action_observer_agent_OS(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> bool:
-    """
-    OS 版本的 action_observer_agent，使用兼容 OpenAI Chat Completions 协议的本地/自建模型。
 
-    Args:
-        image_path: 图像文件路径
-        tool_result: 工具执行结果
-        model_name: 本地模型名称（默认 `/models/Qwen3-VL-32B-Instruct-AWQ`）
-        base_url: OpenAI 兼容接口地址，若为 None 则使用环境变量或默认值 `http://localhost:8000/v1`
-        api_key: 接口密钥，可为任意非空字符串（vLLM 默认可填 `"EMPTY"`）
-
-    Returns:
-        bool: 是否需要重新执行（True 表示需要重做）
-    """
     base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
     api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
 
@@ -367,10 +327,10 @@ def action_observer_agent_OS(
                 if parsed is None:
                     raise ValueError("Failed to extract JSON from response")
             except (ImportError, ValueError):
-                print(f"⚠️ 警告: action_observer_agent_OS 无法解析 JSON，返回 False（不重做）")
+                print(f"⚠️: action_observer_agent_OS 无法解析 JSON，返回 False（不重做）")
                 return False
         
         return bool(parsed.get("redo", False))
     except Exception as e:
-        print(f"⚠️ 警告: action_observer_agent_OS 出错: {e}，返回 False（不重做）")
+        print(f"⚠️: action_observer_agent_OS: {e}，False")
         return False
