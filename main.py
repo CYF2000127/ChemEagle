@@ -50,21 +50,21 @@ def ChemEagle(
 ) -> dict:
     """
     """
-    # 初始化 Azure OpenAI 客户端
+
     client = AzureOpenAI(
         api_key=API_KEY,
         api_version=API_VERSION,
         azure_endpoint=AZURE_ENDPOINT
     )
 
-    # 加载图像并编码为 Base64
+
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-    # GPT 工具调用配置
+
     tools = [
         {
         'type': 'function',
@@ -158,14 +158,12 @@ def ChemEagle(
         },
     ]
 
-    # 提供给 GPT 的消息内容
     with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
 
     with open('./prompt/prompt_plan_new.txt', 'r', encoding='utf-8') as prompt_file:
         planner_user_message = prompt_file.read()
 
-    # Step 1: 调用 planner 获取 agent 列表
     planner_response = client.chat.completions.create(
         model='gpt-5-mini',
         messages=[
@@ -179,15 +177,11 @@ def ChemEagle(
             }
         ]
     )
-    
-    # 解析 planner 返回的 agent 列表
+
     planner_output = planner_response.choices[0].message.content.strip()
-    print(f"[D] Planner output: {planner_output}")
-    
-    # 提取 agent 名称（移除可能的括号、花括号等）
-    # 移除 { } 和多余的空白
+    print(f"[D] Planner output: {planner_output}")    
+
     planner_output = re.sub(r'[{}]', '', planner_output).strip()
-    # 分割为 agent 列表
     agent_list = [agent.strip() for agent in planner_output.split(',') if agent.strip()]
     print(f"[D] Parsed agents: {agent_list}")
     
@@ -204,13 +198,11 @@ def ChemEagle(
     elif "molecular recognition agent" in agent_names_lower:
         selected_tool = "get_multi_molecular_full"
     else:
-        # 如果没有匹配的 agent，默认使用 get_full_reaction_template
         print(f"warning: no agents")
         selected_tool = "get_full_reaction_template"
     
     print(f"[D] Selected tool: {selected_tool}")
     
-    # Step 3: 工具映射表
     TOOL_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group,
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group,
@@ -219,8 +211,7 @@ def ChemEagle(
         'text_extraction_agent': text_extraction_agent
     }
     
-    # Step 4: 构建执行计划（支持 observer）
-    # 检查是否有 text_extraction_agent
+
     has_text_extraction = "text extraction agent" in agent_names_lower or "text_extraction_agent" in agent_names_lower
     
     serialized_calls = [{
@@ -229,7 +220,6 @@ def ChemEagle(
         "arguments": {"image_path": image_path}
     }]
     
-    # 如果有 text_extraction_agent，添加第二个工具
     if has_text_extraction:
         serialized_calls.append({
             "id": "tool_call_1",
@@ -238,7 +228,7 @@ def ChemEagle(
         })
         print(f"[D] Added text_extraction_agent as second tool")
     
-    # Plan Observer: 审查和修改工具调用计划
+    # Plan Observer
     if use_plan_observer:
         reviewed_plan = plan_observer_agent(image_path, serialized_calls)
         if not isinstance(reviewed_plan, list) or not reviewed_plan:
@@ -270,7 +260,6 @@ def ChemEagle(
     execution_logs = []
     results = []
 
-    # Step 5: 执行工具调用
     for idx, plan_item in enumerate(plan_to_execute):
         tool_name = plan_item.get("name") or plan_item.get("tool_name")
         if not tool_name:
@@ -293,7 +282,6 @@ def ChemEagle(
             "result": tool_result,
         })
 
-        # 保存每个工具调用结果
         results.append({
             'role': 'tool',
             'content': json.dumps({
@@ -303,7 +291,7 @@ def ChemEagle(
             'tool_call_id': tool_call_id,
         })
 
-    # Action Observer: 检查执行结果，如果失败则重新执行
+    # Action Observer
     if use_action_observer and action_observer_agent(image_path, execution_logs):
         return {
             "redo": True,
@@ -311,8 +299,6 @@ def ChemEagle(
             "execution_logs": execution_logs,
         }
 
-    # Prepare the chat completion payload
-    # 构建 assistant 消息，包含 planner 的输出和工具调用信息
     executed_tools = [selected_tool]
     if has_text_extraction:
         executed_tools.append("text_extraction_agent")
@@ -352,10 +338,10 @@ def ChemEagle(
         response_format={ 'type': 'json_object' },
     )
 
-    # 获取 GPT 生成的结果
     gpt_output = json.loads(response.choices[0].message.content)
     print(gpt_output)
     return gpt_output
+
 
 def ChemEagle_OS(
     image_path: str,
@@ -383,14 +369,12 @@ def ChemEagle_OS(
 
     base64_image = encode_image(image_path)
 
-    # 提供给 GPT 的消息内容
     with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
 
     with open('./prompt/prompt_plan_new.txt', 'r', encoding='utf-8') as prompt_file:
         planner_user_message = prompt_file.read()
 
-    # Step 1: 调用 planner 获取 agent 列表
     planner_response = client.chat.completions.create(
         model=model_name,
         temperature=0,
@@ -406,14 +390,10 @@ def ChemEagle_OS(
         ]
     )
     
-    # 解析 planner 返回的 agent 列表
     planner_output = planner_response.choices[0].message.content.strip()
     print(f"[OS_D] Planner output: {planner_output}")
     
-    # 提取 agent 名称（移除可能的括号、花括号等）
-    # 移除 { } 和多余的空白
     planner_output = re.sub(r'[{}]', '', planner_output).strip()
-    # 分割为 agent 列表
     agent_list = [agent.strip() for agent in planner_output.split(',') if agent.strip()]
     print(f"[OS_D] Parsed agents: {agent_list}")
     
@@ -429,7 +409,6 @@ def ChemEagle_OS(
     elif "molecular recognition agent" in agent_names_lower:
         selected_tool = "get_multi_molecular_full"
     else:
-        # 如果没有匹配的 agent，默认使用 get_full_reaction_template
         print(f"warning: no agents")
         selected_tool = "get_full_reaction_template"
     
@@ -443,8 +422,6 @@ def ChemEagle_OS(
         'text_extraction_agent': text_extraction_agent_OS
     }
     
-    # Step 3: 构建执行计划（支持 observer）
-    # 检查是否有 text_extraction_agent
     has_text_extraction = "text extraction agent" in agent_names_lower or "text_extraction_agent" in agent_names_lower
     
     serialized_calls = [{
@@ -453,7 +430,6 @@ def ChemEagle_OS(
         "arguments": {"image_path": image_path}
     }]
     
-    # 如果有 text_extraction_agent，添加第二个工具
     if has_text_extraction:
         serialized_calls.append({
             "id": "tool_call_1",
@@ -462,7 +438,7 @@ def ChemEagle_OS(
         })
         print(f"[OS_D] Added text_extraction_agent as second tool")
     
-    # Plan Observer: 审查和修改工具调用计划
+    # Plan Observer
     if use_plan_observer:
         reviewed_plan = plan_observer_agent_OS(image_path, serialized_calls)
         if not isinstance(reviewed_plan, list) or not reviewed_plan:
@@ -494,7 +470,6 @@ def ChemEagle_OS(
     execution_logs = []
     results = []
 
-    # Step 4: 执行工具调用
     for idx, plan_item in enumerate(plan_to_execute):
         tool_name = plan_item.get("name") or plan_item.get("tool_name")
         if not tool_name:
@@ -517,14 +492,13 @@ def ChemEagle_OS(
             "result": tool_result,
         })
 
-        # 确保 tool_name 不为空（OpenAI 兼容 API 标准要求）
         if not tool_name or not tool_name.strip():
             print(f"warning: tool_name is empty，skip")
             continue
             
         results.append({
             'role': 'tool',
-            'name': tool_name.strip(),  # OpenAI 兼容 API 标准：工具响应必须包含 name 字段（Qwen/Gemini 都支持）
+            'name': tool_name.strip(),
             'content': json.dumps({
                 'image_path': image_path,
                 tool_name: tool_result,
@@ -534,7 +508,7 @@ def ChemEagle_OS(
     
     print(f'[OS_D] results: {results}')
     
-    # Action Observer: 检查执行结果，如果失败则重新执行
+    # Action Observer
     if use_action_observer and action_observer_agent_OS(image_path, execution_logs):
         return {
             "redo": True,
@@ -542,8 +516,6 @@ def ChemEagle_OS(
             "execution_logs": execution_logs,
         }
 
-    # Prepare the chat completion payload
-    # 构建 assistant 消息，包含 planner 的输出和工具调用信息
     executed_tools = [selected_tool]
     if has_text_extraction:
         executed_tools.append("text_extraction_agent")
@@ -576,18 +548,14 @@ def ChemEagle_OS(
     )
     print(response)
     
-    # 获取原始响应内容
     raw_content = response.choices[0].message.content
     
-    # 尝试解析 JSON（支持从包含思考过程的文本中提取）
     from get_R_group_sub_agent import extract_json_from_text_with_reasoning
     
     try:
-        # 首先尝试直接解析
         gpt_output = json.loads(raw_content)
         print("DEBUG [OS_D]: Successfully parsed JSON directly")
     except json.JSONDecodeError:
-        # 如果直接解析失败，使用智能提取函数（支持思考模型输出）
         print("WARNING [OS_D]: Direct JSON parsing failed, trying to extract JSON from text...")
         gpt_output = extract_json_from_text_with_reasoning(raw_content)
         
@@ -596,7 +564,6 @@ def ChemEagle_OS(
         else:
             print(f"ERROR [OS_D]: Failed to parse JSON from model response")
             print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
-            # 如果无法解析为 JSON，返回原始内容（保持向后兼容）
             print("WARNING [OS_D]: Returning raw content as fallback")
             return {"content": raw_content, "parsed": False}
     
