@@ -112,7 +112,7 @@ print(results)
 ##### Prerequisites
 - NVIDIA GPU with CUDA support (recommended)
 - Docker installed (for Windows vLLM deployment)
-- Download the Qwen3-VL model weights (e.g., `Qwen3-VL-32B-Instruct-AWQ`) from [HuggingFace](https://huggingface.co/CYF200127/Qwen3-VL-32B-Instruct-AWQ)
+- Download the Qwen3-VL series model weights (We provided `Qwen3-VL-32B-Instruct-AWQ`) from [HuggingFace](https://huggingface.co/CYF200127/Qwen3-VL-32B-Instruct-AWQ)
 
 1. Setup Python Environment
 ```bash
