@@ -234,6 +234,7 @@ The input can be any chemical graphics; feel free to try more examples!
 ![visualization](examples/reaction1.jpg)
 ![visualization](examples/reaction2.png)
 ![visualization](examples/reaction4.png)
+![visualization](examples/molecules1.png)
 
 ## :warning: Acknowledgement
 1. We use api_version="2024-10-21" with the HKUST Azure OpenAI endpoint as our official closed-source version.
