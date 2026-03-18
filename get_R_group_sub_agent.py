@@ -41,7 +41,44 @@ API_VERSION = os.getenv("API_VERSION")
 
 
 def normalize_product_variant_output(data: dict) -> dict:
-   
+    """
+    将 _product_variant_R_group 系列函数的输出格式转换为标准化格式。
+    
+    输入格式:
+    {
+        'reaction_template': {
+            'reactants': ['SMILES1', 'SMILES2'],
+            'products': ['SMILES3']
+        },
+        'reactions': {
+            '20': {'reactants': [...], 'products': [...]},
+            '25': {'reactants': [...], 'products': [...]},
+            ...
+        },
+        'original_molecule_list': {...}
+    }
+    
+    输出格式:
+    {
+        'reactions': [
+            {
+                'reaction_id': '0_1',
+                'note': 'reaction template',
+                'reactants': [{'smiles': 'SMILES1'}, {'smiles': 'SMILES2'}],
+                'conditions': [],
+                'products': [{'smiles': 'SMILES3', 'label': '3'}]
+            },
+            {
+                'reaction_id': '1_1',
+                'reactants': [{'smiles': '...'}, {'smiles': '...'}],
+                'conditions': ['8 h, 87% yield'],
+                'products': [{'smiles': '...', 'label': '20'}]
+            },
+            ...
+        ],
+        'original_molecule_list': {...}  # 保持不变
+    }
+    """
     if not isinstance(data, dict):
         raise ValueError("Input data must be a dictionary")
     
@@ -79,6 +116,57 @@ def normalize_product_variant_output(data: dict) -> dict:
             'products': [{'smiles': smiles, 'label': label} if label else {'smiles': smiles}
                         for smiles, label in zip(template_products, template_product_labels)]
         })
+    
+    # 1.5 收集没有明确反应物/产物角色的分子，放入 reaction template 的 conditions
+    #     反应物/产物角色关键词：
+    reactant_product_roles = {'product', 'reactant', 'reactant template', 'product template'}
+    #     条件角色关键词（也归入 conditions）：
+    condition_roles = {'condition', 'conditions'}
+    #     提取 label 时需要跳过的所有角色词：
+    skip_words = reactant_product_roles | condition_roles
+
+    # 先收集所有已出现在 reactants/products 中的 SMILES，用于去重
+    all_rxn_smiles = set()
+    if 'reaction_template' in data:
+        template = data['reaction_template']
+        for s in template.get('reactants', []):
+            all_rxn_smiles.add(s)
+        for s in template.get('products', []):
+            all_rxn_smiles.add(s)
+    if 'reactions' in data:
+        for rxn_data in data['reactions'].values():
+            for s in rxn_data.get('reactants', []):
+                all_rxn_smiles.add(s)
+            for s in rxn_data.get('products', []):
+                all_rxn_smiles.add(s)
+
+    unassigned_conditions = []
+    for smiles, info in original_molecule_list.items():
+        if not isinstance(info, list):
+            continue
+        # 跳过已出现在 reactants/products 中的分子
+        if smiles in all_rxn_smiles:
+            continue
+        # 将 info 中所有项拼成小写集合，检查角色
+        info_lower = [str(item).lower().strip() for item in info]
+        has_reactant_product_role = any(role in info_lower for role in reactant_product_roles)
+        if has_reactant_product_role:
+            continue
+        # 没有 reactant/product 角色 → 归入 conditions（包括显式标记了 condition/conditions 的，以及完全无角色的）
+        label_parts = []
+        for item in info:
+            if isinstance(item, str) and not item.startswith('bbox_id=') and not item.startswith('id='):
+                if item.lower().strip() not in skip_words:
+                    label_parts.append(item)
+        label = ', '.join(label_parts) if label_parts else ''
+        cond_entry = {'role': 'reagent', 'smiles': smiles}
+        if label:
+            cond_entry['label'] = f'{label} (the label maybe wrong, please check the image again)'
+        unassigned_conditions.append(cond_entry)
+    
+    # 将未分配分子注入 reaction template 的 conditions
+    if unassigned_conditions and normalized_reactions:
+        normalized_reactions[0]['conditions'].extend(unassigned_conditions)
     
     # 2. 处理 reactions 字典（从 '1_1' 开始编号）
     if 'reactions' in data:
@@ -174,6 +262,63 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
         raise last_exception
     raise RuntimeError("API 调用失败，未知错误")
 
+
+
+def _compensate_missing_molecules(gpt_output: dict, results: list, tool_name: str) -> dict:
+    """
+    补偿机制：将 tool output 中被 GPT 漏掉的分子补充到 gpt_output 中。
+
+    Args:
+        gpt_output: GPT 生成的分子字典，key 为 SMILES
+        results: 工具调用结果列表
+        tool_name: 分子识别工具的名称
+
+    Returns:
+        补充后的 gpt_output
+    """
+    # 从 results 中提取分子识别工具的输出
+    tool_molecules = None
+    for r in results:
+        content_dict = json.loads(r['content'])
+        if tool_name in content_dict:
+            tool_molecules = content_dict[tool_name]
+            break
+
+    if not tool_molecules or not isinstance(tool_molecules, list):
+        return gpt_output
+
+    # 找到 gpt_output 中已有的最大 id
+    max_id = 0
+    for smiles, info in gpt_output.items():
+        if isinstance(info, list):
+            for item in info:
+                if isinstance(item, str) and item.startswith('id='):
+                    try:
+                        id_val = int(item.split('=')[1])
+                        max_id = max(max_id, id_val)
+                    except ValueError:
+                        pass
+
+    # 检查并补充漏掉的分子
+    added_count = 0
+    for mol in tool_molecules:
+        smiles = mol.get('smiles', '')
+        if smiles and smiles not in gpt_output:
+            max_id += 1
+            texts = mol.get('texts', mol.get('text', []))
+            if isinstance(texts, str):
+                texts = [texts]
+            texts_str = ', '.join(str(t) for t in texts) if texts else ''
+            bbox_id = mol.get('bbox_id', '')
+            entry = [texts_str, f'bbox_id={bbox_id}', f'id={max_id}']
+            gpt_output[smiles] = entry
+            added_count += 1
+            print(f"[Compensation] Added missing molecule: {smiles} -> {entry}")
+
+    if added_count > 0:
+        print(f"[Compensation] Total {added_count} missing molecule(s) compensated.")
+
+    return gpt_output
 
 def draw_mol_bboxes(image_path, coref_results, output_path=None):
     """
@@ -1056,6 +1201,7 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
     # 获取 GPT 生成的结果
     gpt_output = json.loads(response.choices[0].message.content)
     print("R_group_agent_output:", gpt_output)
+    gpt_output = _compensate_missing_molecules(gpt_output, results, 'get_multi_molecular_text_to_correct')
     image = Image.open(image_path).convert('RGB')
     image_np = np.array(image)
 
@@ -1362,6 +1508,7 @@ def process_reaction_image_with_product_variant_R_group_OS(
             )
     
     print("R_group_agent_output:", gpt_output)
+    gpt_output = _compensate_missing_molecules(gpt_output, results, 'get_multi_molecular_text_to_correct')
     image = Image.open(image_path).convert('RGB')
     image_np = np.array(image)
 
