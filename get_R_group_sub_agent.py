@@ -717,8 +717,8 @@ def get_multi_molecular_full(image_path: str) -> list:
     image = Image.open(image_path).convert('RGB')
     
     # 将图像作为输入传递给模型
-    #coref_results = process_reaction_image_with_multiple_products_and_text_correctmultiR(image_path)
-    coref_results = model.extract_molecule_corefs_from_figures([image])
+    coref_results = process_reaction_image_with_multiple_products_and_text_correctmultiR(image_path)
+    #coref_results = model.extract_molecule_corefs_from_figures([image])
     for item in coref_results:
         for bbox in item.get("bboxes", []):
             for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]: #'atoms'
@@ -726,12 +726,24 @@ def get_multi_molecular_full(image_path: str) -> list:
 
     data = coref_results[0]
     parsed = parse_coref_data_with_fallback(data)
-
-    
-    ##print(f"coref_results:{json.dumps(parsed)}")
-    #return json.dumps(parsed)
     return parsed
-#get_multi_molecular_text_to_correct('./acs.joc.2c00176 example 1.png')
+
+def get_multi_molecular_full_OS(image_path: str) -> list:
+    '''Returns a list of reactions extracted from the image.'''
+    # 打开图像文件
+    image = Image.open(image_path).convert('RGB')
+    
+    # 将图像作为输入传递给模型
+    coref_results = process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(image_path)
+    #coref_results = model.extract_molecule_corefs_from_figures([image])
+    for item in coref_results:
+        for bbox in item.get("bboxes", []):
+            for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]: #'atoms'
+                bbox.pop(key, None)  # 安全地移除键
+
+    data = coref_results[0]
+    parsed = parse_coref_data_with_fallback(data)
+    return parsed
 
 
 
