@@ -16,7 +16,7 @@ import re
 from typing import Optional
 from get_molecular_agent import process_reaction_image_with_multiple_products_and_text_correctR, process_reaction_image_with_multiple_products_and_text_correctmultiR
 from get_reaction_agent import get_reaction_withatoms_correctR
-from get_R_group_sub_agent import process_reaction_image_with_table_R_group, process_reaction_image_with_product_variant_R_group,get_full_reaction_template_OS,get_full_reaction_template, get_multi_molecular_full, process_reaction_image_with_table_R_group_OS,process_reaction_image_with_product_variant_R_group_OS,get_full_reaction_OS,get_reaction_OS
+from get_R_group_sub_agent import process_reaction_image_with_table_R_group, process_reaction_image_with_product_variant_R_group,get_full_reaction_template_OS,get_full_reaction_template, get_multi_molecular_full,get_multi_molecular_full_OS, process_reaction_image_with_table_R_group_OS,process_reaction_image_with_product_variant_R_group_OS,get_full_reaction_OS,get_reaction_OS
 from get_observer import action_observer_agent, plan_observer_agent,action_observer_agent_OS, plan_observer_agent_OS
 from get_text_agent import text_extraction_agent, text_extraction_agent_OS
 
@@ -418,7 +418,7 @@ def ChemEagle_OS(
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group_OS,
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group_OS,
         'get_full_reaction_template': get_full_reaction_template_OS,
-        'get_multi_molecular_full': get_multi_molecular_full,
+        'get_multi_molecular_full': get_multi_molecular_full_OS,
         'text_extraction_agent': text_extraction_agent_OS
     }
     
