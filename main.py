@@ -6,11 +6,8 @@ import cv2
 from openai import AzureOpenAI, OpenAI
 import numpy as np
 from PIL import Image
-import json
 import os
-import sys
 from rxnim import RxnIM
-import json
 import base64
 import re
 from typing import Optional, Dict, Any, List
@@ -42,6 +39,50 @@ def _normalize_tool_args(raw_args: Optional[dict], image_path: str) -> dict:
     return normalized
 
 
+AGENT_NAME_TO_TOOL = {
+    "structure-based r-group substitution agent": "process_reaction_image_with_product_variant_R_group",
+    "text-based r-group substitution agent": "process_reaction_image_with_table_R_group",
+    "reaction template parsing agent": "get_full_reaction_template",
+    "molecular recognition agent": "get_multi_molecular_full",
+    "text extraction agent": "text_extraction_agent",
+}
+
+
+def _clean_agent_name(raw_name: str) -> str:
+    """Strip leading numbering (e.g. '1.', '2)', '- ') from an agent name."""
+    cleaned = re.sub(r'^[\d]+[.):\-\s]+', '', raw_name.strip())
+    cleaned = re.sub(r'^[-•*]\s*', '', cleaned)
+    return cleaned.strip()
+
+
+def _parse_planner_output(raw_output: str) -> List[str]:
+    """Parse planner text output into a clean list of agent names."""
+    cleaned = re.sub(r'[{}]', '', raw_output).strip()
+    agents = [_clean_agent_name(a) for a in cleaned.split(',') if a.strip()]
+    return [a for a in agents if a]
+
+
+def _select_main_area(agent_names_lower: List[str]) -> str:
+    """Select the main area tool name from a list of agent names (substring match).
+    Priority: structure R-group > text R-group > reaction template > molecular recognition."""
+    priority = [
+        ("structure-based r-group substitution agent", "process_reaction_image_with_product_variant_R_group"),
+        ("text-based r-group substitution agent", "process_reaction_image_with_table_R_group"),
+        ("reaction template parsing agent", "get_full_reaction_template"),
+        ("molecular recognition agent", "get_multi_molecular_full"),
+    ]
+    for keyword, tool_name in priority:
+        if any(keyword in agent for agent in agent_names_lower):
+            return tool_name
+    return "get_full_reaction_template"
+
+
+def _has_text_extraction(agent_names_lower: List[str]) -> bool:
+    """Check if text extraction agent is in the agent list (substring match)."""
+    return any("text extraction agent" in a or "text_extraction_agent" in a
+               for a in agent_names_lower)
+
+
 def ChemEagle(
     image_path: str,
     *,
@@ -49,32 +90,30 @@ def ChemEagle(
     use_action_observer: bool = False,
 ) -> dict:
     """
-    输入化学反应图像路径，通过 GPT 模型和 TOOLS 提取反应信息并返回整理后的反应数据。
-    这是 ChemEagle 的增强版本，支持 plan observer 和 action observer。
+    Given a chemical reaction image path, extract reaction information
+    using GPT models and tools, and return structured reaction data.
+    Supports plan observer and action observer.
 
     Args:
-        image_path (str): 图像文件路径。
-        use_plan_observer (bool): 是否使用 plan observer 来审查和修改工具调用计划。
-        use_action_observer (bool): 是否使用 action observer 来检查执行结果，如果失败则重新执行。
+        image_path (str): Path to the image file.
+        use_plan_observer (bool): Whether to use plan observer to review the tool call plan.
+        use_action_observer (bool): Whether to use action observer to check execution results.
 
     Returns:
-        dict: 整理后的反应数据，包括反应物、产物和反应模板。
+        dict: Structured reaction data including reactants, products, and reaction template.
     """
-    # 初始化 Azure OpenAI 客户端
     client = AzureOpenAI(
         api_key=API_KEY,
         api_version=API_VERSION,
         azure_endpoint=AZURE_ENDPOINT
     )
 
-    # 加载图像并编码为 Base64
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-    # GPT 工具调用配置
     tools = [
         {
         'type': 'function',
@@ -168,14 +207,12 @@ def ChemEagle(
         },
     ]
 
-    # 提供给 GPT 的消息内容
     with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
 
     with open('./prompt/prompt_plan.txt', 'r', encoding='utf-8') as prompt_file:
         planner_user_message = prompt_file.read()
 
-    # Step 1: 调用 planner 获取 agent 列表
     planner_response = client.chat.completions.create(
         model='gpt-5-mini',
         messages=[
@@ -190,15 +227,10 @@ def ChemEagle(
         ]
     )
     
-    # 解析 planner 返回的 agent 列表
     planner_output = planner_response.choices[0].message.content.strip()
     print(f"[D] Planner output: {planner_output}")
     
-    # 提取 agent 名称（移除可能的括号、花括号等）
-    # 移除 { } 和多余的空白
-    planner_output = re.sub(r'[{}]', '', planner_output).strip()
-    # 分割为 agent 列表
-    agent_list = [agent.strip() for agent in planner_output.split(',') if agent.strip()]
+    agent_list = _parse_planner_output(planner_output)
     print(f"[D] Parsed agents: {agent_list}")
     
     if use_plan_observer:
@@ -220,21 +252,8 @@ def ChemEagle(
                 if reason:
                     print(f"[D] Plan observer reason: {reason}")
     
-    # Step 3: agent 名称 → 工具函数名映射
-    selected_area = None
     agent_names_lower = [agent.lower() for agent in agent_list]
-    
-    if "structure-based r-group substitution agent" in agent_names_lower:
-        selected_area = "process_reaction_image_with_product_variant_R_group"
-    elif "text-based r-group substitution agent" in agent_names_lower:
-        selected_area = "process_reaction_image_with_table_R_group"
-    elif "reaction template parsing agent" in agent_names_lower:
-        selected_area = "get_full_reaction_template"
-    elif "molecular recognition agent" in agent_names_lower:
-        selected_area = "get_multi_molecular_full"
-    else:
-        print(f"warning: no agents")
-        selected_area = "get_full_reaction_template"
+    selected_area = _select_main_area(agent_names_lower)
     
     print(f"[D] Selected area: {selected_area}")
     
@@ -246,8 +265,7 @@ def ChemEagle(
         'text_extraction_agent': text_extraction_agent
     }
     
-    # Step 4: 执行主 area
-    has_text_extraction = "text extraction agent" in agent_names_lower or "text_extraction_agent" in agent_names_lower
+    has_text_extraction = _has_text_extraction(agent_names_lower)
 
     print(f"[D] Executing main area: {selected_area}")
     main_area_result = AREA_MAP[selected_area](image_path=image_path)
@@ -266,7 +284,6 @@ def ChemEagle(
         'tool_call_id': "tool_call_0",
     }]
 
-    # Action Observer: 仅检查主 area 执行结果
     observer_reason = ""
     if use_action_observer:
         observer_result = action_observer_agent(image_path, execution_logs)
@@ -289,7 +306,6 @@ def ChemEagle(
                 'tool_call_id': "retry_call_0",
             }
 
-    # 执行 text_extraction_agent（传入最终的主 area 结果，结果不传给第二次 LLM）
     text_extraction_result = None
     if has_text_extraction:
         print(f"[D] Executing text_extraction_agent with graphical_input")
@@ -298,7 +314,6 @@ def ChemEagle(
             graphical_input=main_area_result,
         )
 
-    # 构建 assistant 消息（仅包含主 area，text_extraction 不传给 LLM）
     msg = f"Executed areas: {selected_area}"
     if observer_reason:
         msg += f"\nPotential error from previous execution: {observer_reason}"
@@ -331,14 +346,12 @@ def ChemEagle(
             ],
     }
 
-    # Generate new response
     response = client.chat.completions.create(
         model=completion_payload["model"],
         messages=completion_payload["messages"],
         response_format={ 'type': 'json_object' },
     )
 
-    # 获取 GPT 生成的结果
     gpt_output = json.loads(response.choices[0].message.content)
     if text_extraction_result is not None:
         gpt_output["text_extraction"] = text_extraction_result
@@ -371,14 +384,12 @@ def ChemEagle_OS(
 
     base64_image = encode_image(image_path)
 
-    # 提供给 GPT 的消息内容
     with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
 
     with open('./prompt/prompt_plan.txt', 'r', encoding='utf-8') as prompt_file:
         planner_user_message = prompt_file.read()
 
-    # Step 1: 调用 planner 获取 agent 列表
     planner_response = client.chat.completions.create(
         model=model_name,
         temperature=0,
@@ -397,9 +408,7 @@ def ChemEagle_OS(
     planner_output = planner_response.choices[0].message.content.strip()
     print(f"[OS_D] Planner output: {planner_output}")
     
-    planner_output = re.sub(r'[{}]', '', planner_output).strip()
-    # 分割为 agent 列表
-    agent_list = [agent.strip() for agent in planner_output.split(',') if agent.strip()]
+    agent_list = _parse_planner_output(planner_output)
     print(f"[OS_D] Parsed agents: {agent_list}")
     
     if use_plan_observer:
@@ -421,20 +430,8 @@ def ChemEagle_OS(
                 if reason:
                     print(f"[OS_D] Plan observer reason: {reason}")
     
-    selected_area = None
     agent_names_lower = [agent.lower() for agent in agent_list]
-    
-    if "structure-based r-group substitution agent" in agent_names_lower:
-        selected_area = "process_reaction_image_with_product_variant_R_group"
-    elif "text-based r-group substitution agent" in agent_names_lower:
-        selected_area = "process_reaction_image_with_table_R_group"
-    elif "reaction template parsing agent" in agent_names_lower:
-        selected_area = "get_full_reaction_template"
-    elif "molecular recognition agent" in agent_names_lower:
-        selected_area = "get_multi_molecular_full"
-    else:
-        print(f"warning: no agents")
-        selected_area = "get_full_reaction_template"
+    selected_area = _select_main_area(agent_names_lower)
     
     print(f"[OS_D] Selected area: {selected_area}")
     
@@ -446,13 +443,11 @@ def ChemEagle_OS(
         'text_extraction_agent': text_extraction_agent_OS
     }
     
-    has_text_extraction = "text extraction agent" in agent_names_lower or "text_extraction_agent" in agent_names_lower
+    has_text_extraction = _has_text_extraction(agent_names_lower)
 
     OS_TOOLS_ACCEPT_BASE_D = (
         "process_reaction_image_with_product_variant_R_group",
         "process_reaction_image_with_table_R_group",
-        "get_full_reaction_template",
-        "get_multi_molecular_full",
     )
 
     print(f"[OS_D] Executing main area: {selected_area}")
@@ -507,7 +502,6 @@ def ChemEagle_OS(
                 'tool_call_id': "retry_call_0",
             }
 
-    # 执行 text_extraction_agent（传入最终的主 area 结果，结果不传给第二次 LLM）
     text_extraction_result = None
     if has_text_extraction:
         print(f"[OS_D] Executing text_extraction_agent with graphical_input")
@@ -518,7 +512,6 @@ def ChemEagle_OS(
             api_key=api_key,
         )
 
-    # 构建 assistant 消息（仅包含主 area，text_extraction 不传给 LLM）
     msg = f"Executed areas: {selected_area}"
     if observer_reason:
         msg += f"\nPotential error from previous execution: {observer_reason}"
@@ -546,23 +539,18 @@ def ChemEagle_OS(
     response = client.chat.completions.create(
         model=completion_payload["model"],
         messages=completion_payload["messages"],
-        #response_format={ 'type': 'json_object' },
         temperature=0,
     )
     print(response)
     
-    # 获取原始响应内容
     raw_content = response.choices[0].message.content
     
-    # 尝试解析 JSON（支持从包含思考过程的文本中提取）
     from get_R_group_sub_agent import extract_json_from_text_with_reasoning
     
     try:
-        # 首先尝试直接解析
         gpt_output = json.loads(raw_content)
         print("DEBUG [OS_D]: Successfully parsed JSON directly")
     except json.JSONDecodeError:
-        # 如果直接解析失败，使用智能提取函数（支持思考模型输出）
         print("WARNING [OS_D]: Direct JSON parsing failed, trying to extract JSON from text...")
         gpt_output = extract_json_from_text_with_reasoning(raw_content)
         
@@ -571,9 +559,7 @@ def ChemEagle_OS(
         else:
             print(f"ERROR [OS_D]: Failed to parse JSON from model response")
             print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
-            # 如果无法解析为 JSON，直接返回工具结果
             print("WARNING [OS_D]: Returning tool results as fallback")
-            # 从 execution_logs 中提取主 area 工具结果（排除 text_extraction）
             tool_results_dict = {}
             for log in execution_logs:
                 t_name = log.get("name")
@@ -583,14 +569,10 @@ def ChemEagle_OS(
             if len(tool_results_dict) == 1:
                 single_result = list(tool_results_dict.values())[0]
                 if isinstance(single_result, dict):
-                    single_result = single_result
                     if text_extraction_result is not None:
                         single_result["text_extraction"] = text_extraction_result
                 return single_result
             else:
-                for t_name, t_result in tool_results_dict.items():
-                    if isinstance(t_result, dict):
-                        tool_results_dict[t_name] = t_result
                 if text_extraction_result is not None:
                     tool_results_dict["text_extraction"] = text_extraction_result
                 return tool_results_dict
