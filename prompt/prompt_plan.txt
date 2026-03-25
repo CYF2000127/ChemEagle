@@ -7,13 +7,13 @@ Parses the reaction scheme to identify reactants, products, and label mappings, 
 2. Molecular recognition agent
 Detects other molecules in the graphic except in the reaction template, recognizes their structures, and returns normalized representations (e.g., SMILES, labels, positions).
 3. Structure-based R-group substitution agent
-Uses structure panels / variant images to extract R-group values and generate enumerated products from a core scaffold based on structural information.
+Uses structure panels/variant images to extract R-group values and generate enumerated products from a core scaffold based on structural information.
 4. Text-based R-group substitution agent
 Reads R-group tables and enumerates products or substituents on top of a given core scaffold using text information.
 5. Condition interpretation agent
 Extracts and normalizes reaction conditions (catalysts, reagents, solvent, temperature, time, atmosphere, etc.) from the graphic.
 6. Text extraction agent
-Performs chmical NER and text-based reaction extraction on the text description.
+Performs chemical NER and text-based reaction extraction on the text description sentences.
 
 Your task is to:
 Inspect the graphic and determine which of the following components are present (one image may contain several of them):
@@ -35,6 +35,12 @@ If there is descriptive or caption text that can be used for chemical NER and te
 Mutual exclusion rule (VERY IMPORTANT):
 Text-based R-group substitution agent and Structure-based R-group substitution agent MUST NOT be used at the same time.
 If BOTH an image-based variant panel and a text-based R-group table are present in the same graphic, prefer the Structure-based R-group substitution agent and do NOT select the Text-based R-group substitution agent.
+
+Key distinction between Structure-based and Text-based R-group agents (VERY IMPORTANT):
+The deciding factor is what each TABLE CELL contains:
+- As long as there are COMPLETE product/substrate variant molecules (full structures) → Structure-based R-group substitution agent
+- R-group FRAGMENTS or substituent values (text like "Me"/"Ph"/"3-BrC6H4", or partial structures with wavy bonds showing only the R-group portion) → Text-based R-group substitution agent
+Even if every cell in the table is a drawn structure, if those structures are all R-group FRAGMENTS (not complete product variants), use the Text-based agent.
 
 General notes:
 You may select any subset of the six agents that is relevant to the components present in the image.
