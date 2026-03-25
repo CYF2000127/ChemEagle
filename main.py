@@ -45,26 +45,36 @@ def _normalize_tool_args(raw_args: Optional[dict], image_path: str) -> dict:
 def ChemEagle(
     image_path: str,
     *,
-    use_plan_observer: bool = True,
-    use_action_observer: bool = True,
+    use_plan_observer: bool = False,
+    use_action_observer: bool = False,
 ) -> dict:
     """
-    """
+    输入化学反应图像路径，通过 GPT 模型和 TOOLS 提取反应信息并返回整理后的反应数据。
+    这是 ChemEagle 的增强版本，支持 plan observer 和 action observer。
 
+    Args:
+        image_path (str): 图像文件路径。
+        use_plan_observer (bool): 是否使用 plan observer 来审查和修改工具调用计划。
+        use_action_observer (bool): 是否使用 action observer 来检查执行结果，如果失败则重新执行。
+
+    Returns:
+        dict: 整理后的反应数据，包括反应物、产物和反应模板。
+    """
+    # 初始化 Azure OpenAI 客户端
     client = AzureOpenAI(
         api_key=API_KEY,
         api_version=API_VERSION,
         azure_endpoint=AZURE_ENDPOINT
     )
 
-
+    # 加载图像并编码为 Base64
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-
+    # GPT 工具调用配置
     tools = [
         {
         'type': 'function',
@@ -158,12 +168,14 @@ def ChemEagle(
         },
     ]
 
+    # 提供给 GPT 的消息内容
     with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
 
     with open('./prompt/prompt_plan_new.txt', 'r', encoding='utf-8') as prompt_file:
         planner_user_message = prompt_file.read()
 
+    # Step 1: 调用 planner 获取 agent 列表
     planner_response = client.chat.completions.create(
         model='gpt-5-mini',
         messages=[
@@ -177,33 +189,56 @@ def ChemEagle(
             }
         ]
     )
-
+    
+    # 解析 planner 返回的 agent 列表
     planner_output = planner_response.choices[0].message.content.strip()
-    print(f"[D] Planner output: {planner_output}")    
-
+    print(f"[D] Planner output: {planner_output}")
+    
+    # 提取 agent 名称（移除可能的括号、花括号等）
+    # 移除 { } 和多余的空白
     planner_output = re.sub(r'[{}]', '', planner_output).strip()
+    # 分割为 agent 列表
     agent_list = [agent.strip() for agent in planner_output.split(',') if agent.strip()]
     print(f"[D] Parsed agents: {agent_list}")
     
+    if use_plan_observer:
+        observer_output = plan_observer_agent(image_path, agent_list)
+        reviewed = observer_output.get("list_of_agents", agent_list)
+        reason = observer_output.get("reason", "")
+        if isinstance(reviewed, list) and reviewed:
+            new_agents = []
+            for item in reviewed:
+                if isinstance(item, str):
+                    new_agents.append(item)
+                elif isinstance(item, dict):
+                    name = item.get("name") or item.get("tool_name") or ""
+                    if name:
+                        new_agents.append(name)
+            if new_agents:
+                agent_list = new_agents
+                print(f"[D] Plan observer revised agents: {agent_list}")
+                if reason:
+                    print(f"[D] Plan observer reason: {reason}")
     
-    selected_tool = None
+    # Step 3: agent 名称 → 工具函数名映射
+    selected_area = None
     agent_names_lower = [agent.lower() for agent in agent_list]
     
     if "structure-based r-group substitution agent" in agent_names_lower:
-        selected_tool = "process_reaction_image_with_product_variant_R_group"
+        selected_area = "process_reaction_image_with_product_variant_R_group"
     elif "text-based r-group substitution agent" in agent_names_lower:
-        selected_tool = "process_reaction_image_with_table_R_group"
+        selected_area = "process_reaction_image_with_table_R_group"
     elif "reaction template parsing agent" in agent_names_lower:
-        selected_tool = "get_full_reaction_template"
+        selected_area = "get_full_reaction_template"
     elif "molecular recognition agent" in agent_names_lower:
-        selected_tool = "get_multi_molecular_full"
+        selected_area = "get_multi_molecular_full"
     else:
         print(f"warning: no agents")
-        selected_tool = "get_full_reaction_template"
+        selected_area = "get_full_reaction_template"
     
-    print(f"[D] Selected tool: {selected_tool}")
+    print(f"[D] Selected area: {selected_area}")
     
-    TOOL_MAP = {
+    AREA_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group,
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group,
         'get_full_reaction_template': get_full_reaction_template,
@@ -211,100 +246,65 @@ def ChemEagle(
         'text_extraction_agent': text_extraction_agent
     }
     
-
+    # Step 4: 执行主 area
     has_text_extraction = "text extraction agent" in agent_names_lower or "text_extraction_agent" in agent_names_lower
-    
-    serialized_calls = [{
+
+    print(f"[D] Executing main area: {selected_area}")
+    main_area_result = AREA_MAP[selected_area](image_path=image_path)
+    execution_logs = [{
         "id": "tool_call_0",
-        "name": selected_tool,
-        "arguments": {"image_path": image_path}
+        "name": selected_area,
+        "arguments": {"image_path": image_path},
+        "result": main_area_result,
     }]
-    
+    results = [{
+        'role': 'tool',
+        'content': json.dumps({
+            'image_path': image_path,
+            selected_area: main_area_result,
+        }),
+        'tool_call_id': "tool_call_0",
+    }]
+
+    # Action Observer: 仅检查主 area 执行结果
+    observer_reason = ""
+    if use_action_observer:
+        observer_result = action_observer_agent(image_path, execution_logs)
+        if observer_result.get("redo"):
+            observer_reason = observer_result.get("reason", "")
+            print(f"[D] Action observer requested redo: {observer_reason}")
+            main_area_result = AREA_MAP[selected_area](image_path=image_path)
+            execution_logs[0] = {
+                "id": "retry_call_0",
+                "name": selected_area,
+                "arguments": {"image_path": image_path},
+                "result": main_area_result,
+            }
+            results[0] = {
+                'role': 'tool',
+                'content': json.dumps({
+                    'image_path': image_path,
+                    selected_area: main_area_result,
+                }),
+                'tool_call_id': "retry_call_0",
+            }
+
+    # 执行 text_extraction_agent（传入最终的主 area 结果，结果不传给第二次 LLM）
+    text_extraction_result = None
     if has_text_extraction:
-        serialized_calls.append({
-            "id": "tool_call_1",
-            "name": "text_extraction_agent",
-            "arguments": {"image_path": image_path}
-        })
-        print(f"[D] Added text_extraction_agent as second tool")
-    
-    # Plan Observer
-    if use_plan_observer:
-        reviewed_plan = plan_observer_agent(image_path, serialized_calls)
-        if not isinstance(reviewed_plan, list) or not reviewed_plan:
-            plan_to_execute = serialized_calls
-        else:
-            plan_to_execute = []
-            for idx, item in enumerate(reviewed_plan):
-                name = item.get("name") or item.get("tool_name")
-                if not name:
-                    continue
-                args = item.get("arguments", {})
-                if isinstance(args, str):
-                    try:
-                        args = json.loads(args)
-                    except json.JSONDecodeError:
-                        args = {}
-                call_id = item.get("id") or f"observer_call_{idx}"
-                plan_to_execute.append({
-                    "id": call_id,
-                    "name": name,
-                    "arguments": args,
-                })
-            if not plan_to_execute:
-                plan_to_execute = serialized_calls
-    else:
-        plan_to_execute = serialized_calls
+        print(f"[D] Executing text_extraction_agent with graphical_input")
+        text_extraction_result = text_extraction_agent(
+            image_path=image_path,
+            graphical_input=main_area_result,
+        )
 
-    print(f"[D] plan_to_execute:{plan_to_execute}")
-    execution_logs = []
-    results = []
-
-    for idx, plan_item in enumerate(plan_to_execute):
-        tool_name = plan_item.get("name") or plan_item.get("tool_name")
-        if not tool_name:
-            print(f"warning: plan_item {idx} no name ，skip: {plan_item}")
-            continue
-        
-        tool_call_id = plan_item.get("id") or f"observer_call_{idx}"
-        tool_args = _normalize_tool_args(plan_item.get("arguments", {}), image_path)
-
-        if tool_name in TOOL_MAP:
-            tool_func = TOOL_MAP[tool_name]
-            tool_result = tool_func(**tool_args)
-        else:
-            raise ValueError(f"Unknown tool called: {tool_name}")
-
-        execution_logs.append({
-            "id": tool_call_id,
-            "name": tool_name,
-            "arguments": tool_args,
-            "result": tool_result,
-        })
-
-        results.append({
-            'role': 'tool',
-            'content': json.dumps({
-                'image_path': image_path,
-                f'{tool_name}':(tool_result),
-            }),
-            'tool_call_id': tool_call_id,
-        })
-
-    # Action Observer
-    if use_action_observer and action_observer_agent(image_path, execution_logs):
-        return {
-            "redo": True,
-            "plan": plan_to_execute,
-            "execution_logs": execution_logs,
-        }
-
-    executed_tools = [selected_tool]
-    if has_text_extraction:
-        executed_tools.append("text_extraction_agent")
+    # 构建 assistant 消息（仅包含主 area，text_extraction 不传给 LLM）
+    msg = f"Executed areas: {selected_area}"
+    if observer_reason:
+        msg += f"\nPotential error from previous execution: {observer_reason}"
     assistant_message = {
         "role": "assistant",
-        "content": f"Selected agents: {', '.join(agent_list)}\nExecuted tools: {', '.join(executed_tools)}"
+        "content": msg
     }
     
     completion_payload = {
@@ -338,9 +338,13 @@ def ChemEagle(
         response_format={ 'type': 'json_object' },
     )
 
+    # 获取 GPT 生成的结果
     gpt_output = json.loads(response.choices[0].message.content)
+    if text_extraction_result is not None:
+        gpt_output["text_extraction"] = text_extraction_result
     print(gpt_output)
     return gpt_output
+
 
 
 def ChemEagle_OS(
@@ -352,9 +356,7 @@ def ChemEagle_OS(
     use_plan_observer: bool = False,
     use_action_observer: bool = False,
 ) -> dict:
-    """
-    Open source version of ChemEagle
-    """
+
     base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
     api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
 
@@ -369,12 +371,14 @@ def ChemEagle_OS(
 
     base64_image = encode_image(image_path)
 
+    # 提供给 GPT 的消息内容
     with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
 
     with open('./prompt/prompt_plan_new.txt', 'r', encoding='utf-8') as prompt_file:
         planner_user_message = prompt_file.read()
 
+    # Step 1: 调用 planner 获取 agent 列表
     planner_response = client.chat.completions.create(
         model=model_name,
         temperature=0,
@@ -394,134 +398,133 @@ def ChemEagle_OS(
     print(f"[OS_D] Planner output: {planner_output}")
     
     planner_output = re.sub(r'[{}]', '', planner_output).strip()
+    # 分割为 agent 列表
     agent_list = [agent.strip() for agent in planner_output.split(',') if agent.strip()]
     print(f"[OS_D] Parsed agents: {agent_list}")
     
-    selected_tool = None
+    if use_plan_observer:
+        observer_output = plan_observer_agent_OS(image_path, agent_list, model_name=model_name, base_url=base_url, api_key=api_key)
+        reviewed = observer_output.get("list_of_agents", agent_list)
+        reason = observer_output.get("reason", "")
+        if isinstance(reviewed, list) and reviewed:
+            new_agents = []
+            for item in reviewed:
+                if isinstance(item, str):
+                    new_agents.append(item)
+                elif isinstance(item, dict):
+                    name = item.get("name") or item.get("tool_name") or ""
+                    if name:
+                        new_agents.append(name)
+            if new_agents:
+                agent_list = new_agents
+                print(f"[OS_D] Plan observer revised agents: {agent_list}")
+                if reason:
+                    print(f"[OS_D] Plan observer reason: {reason}")
+    
+    selected_area = None
     agent_names_lower = [agent.lower() for agent in agent_list]
     
     if "structure-based r-group substitution agent" in agent_names_lower:
-        selected_tool = "process_reaction_image_with_product_variant_R_group"
+        selected_area = "process_reaction_image_with_product_variant_R_group"
     elif "text-based r-group substitution agent" in agent_names_lower:
-        selected_tool = "process_reaction_image_with_table_R_group"
+        selected_area = "process_reaction_image_with_table_R_group"
     elif "reaction template parsing agent" in agent_names_lower:
-        selected_tool = "get_full_reaction_template"
+        selected_area = "get_full_reaction_template"
     elif "molecular recognition agent" in agent_names_lower:
-        selected_tool = "get_multi_molecular_full"
+        selected_area = "get_multi_molecular_full"
     else:
         print(f"warning: no agents")
-        selected_tool = "get_full_reaction_template"
+        selected_area = "get_full_reaction_template"
     
-    print(f"[OS_D] Selected tool: {selected_tool}")
+    print(f"[OS_D] Selected area: {selected_area}")
     
-    TOOL_MAP = {
+    AREA_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group_OS,
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group_OS,
         'get_full_reaction_template': get_full_reaction_template_OS,
-        'get_multi_molecular_full': get_multi_molecular_full_OS,
+        'get_multi_molecular_full': get_multi_molecular_full,
         'text_extraction_agent': text_extraction_agent_OS
     }
     
     has_text_extraction = "text extraction agent" in agent_names_lower or "text_extraction_agent" in agent_names_lower
-    
-    serialized_calls = [{
+
+    OS_TOOLS_ACCEPT_BASE_D = (
+        "process_reaction_image_with_product_variant_R_group",
+        "process_reaction_image_with_table_R_group",
+        "get_full_reaction_template",
+        "get_multi_molecular_full",
+    )
+
+    print(f"[OS_D] Executing main area: {selected_area}")
+    main_area_args = {"image_path": image_path}
+    if selected_area in OS_TOOLS_ACCEPT_BASE_D:
+        main_area_args["base_url"] = base_url
+        main_area_args["api_key"] = api_key
+    main_area_result = AREA_MAP[selected_area](**main_area_args)
+
+    execution_logs = [{
         "id": "tool_call_0",
-        "name": selected_tool,
-        "arguments": {"image_path": image_path}
+        "name": selected_area,
+        "arguments": {"image_path": image_path},
+        "result": main_area_result,
     }]
-    
-    if has_text_extraction:
-        serialized_calls.append({
-            "id": "tool_call_1",
-            "name": "text_extraction_agent",
-            "arguments": {"image_path": image_path}
-        })
-        print(f"[OS_D] Added text_extraction_agent as second tool")
-    
-    # Plan Observer
-    if use_plan_observer:
-        reviewed_plan = plan_observer_agent_OS(image_path, serialized_calls)
-        if not isinstance(reviewed_plan, list) or not reviewed_plan:
-            plan_to_execute = serialized_calls
-        else:
-            plan_to_execute = []
-            for idx, item in enumerate(reviewed_plan):
-                name = item.get("name") or item.get("tool_name")
-                if not name:
-                    continue
-                args = item.get("arguments", {})
-                if isinstance(args, str):
-                    try:
-                        args = json.loads(args)
-                    except json.JSONDecodeError:
-                        args = {}
-                call_id = item.get("id") or f"observer_call_{idx}"
-                plan_to_execute.append({
-                    "id": call_id,
-                    "name": name,
-                    "arguments": args,
-                })
-            if not plan_to_execute:
-                plan_to_execute = serialized_calls
-    else:
-        plan_to_execute = serialized_calls
+    results = [{
+        'role': 'tool',
+        'name': selected_area,
+        'content': json.dumps({
+            'image_path': image_path,
+            selected_area: main_area_result,
+        }),
+        'tool_call_id': "tool_call_0",
+    }]
 
-    print(f"[OS_D] plan_to_execute:{plan_to_execute}")
-    execution_logs = []
-    results = []
-
-    for idx, plan_item in enumerate(plan_to_execute):
-        tool_name = plan_item.get("name") or plan_item.get("tool_name")
-        if not tool_name:
-            print(f"warning: plan_item {idx} no name ，skip: {plan_item}")
-            continue
-        
-        tool_call_id = plan_item.get("id") or f"observer_call_{idx}"
-        tool_args = _normalize_tool_args(plan_item.get("arguments", {}), image_path)
-
-        if tool_name in TOOL_MAP:
-            tool_func = TOOL_MAP[tool_name]
-            tool_result = tool_func(**tool_args)
-        else:
-            raise ValueError(f"Unknown tool called: {tool_name}")
-
-        execution_logs.append({
-            "id": tool_call_id,
-            "name": tool_name,
-            "arguments": tool_args,
-            "result": tool_result,
-        })
-
-        if not tool_name or not tool_name.strip():
-            print(f"warning: tool_name is empty，skip")
-            continue
-            
-        results.append({
-            'role': 'tool',
-            'name': tool_name.strip(),
-            'content': json.dumps({
-                'image_path': image_path,
-                tool_name: tool_result,
-            }),
-            'tool_call_id': tool_call_id,
-        })
-    
     print(f'[OS_D] results: {results}')
-    
-    # Action Observer
-    if use_action_observer and action_observer_agent_OS(image_path, execution_logs):
-        return {
-            "redo": True,
-            "plan": plan_to_execute,
-            "execution_logs": execution_logs,
-        }
 
-    executed_tools = [selected_tool]
+    observer_reason = ""
+    if use_action_observer:
+        observer_result = action_observer_agent_OS(image_path, execution_logs, model_name=model_name, base_url=base_url, api_key=api_key)
+        if observer_result.get("redo"):
+            observer_reason = observer_result.get("reason", "")
+            print(f"[OS_D] Action observer requested redo: {observer_reason}")
+            retry_args = {"image_path": image_path}
+            if selected_area in OS_TOOLS_ACCEPT_BASE_D:
+                retry_args["base_url"] = base_url
+                retry_args["api_key"] = api_key
+            main_area_result = AREA_MAP[selected_area](**retry_args)
+            execution_logs[0] = {
+                "id": "retry_call_0",
+                "name": selected_area,
+                "arguments": {"image_path": image_path},
+                "result": main_area_result,
+            }
+            results[0] = {
+                'role': 'tool',
+                'name': selected_area,
+                'content': json.dumps({
+                    'image_path': image_path,
+                    selected_area: main_area_result,
+                }),
+                'tool_call_id': "retry_call_0",
+            }
+
+    # 执行 text_extraction_agent（传入最终的主 area 结果，结果不传给第二次 LLM）
+    text_extraction_result = None
     if has_text_extraction:
-        executed_tools.append("text_extraction_agent")
+        print(f"[OS_D] Executing text_extraction_agent with graphical_input")
+        text_extraction_result = text_extraction_agent_OS(
+            image_path=image_path,
+            graphical_input=main_area_result,
+            base_url=base_url,
+            api_key=api_key,
+        )
+
+    # 构建 assistant 消息（仅包含主 area，text_extraction 不传给 LLM）
+    msg = f"Executed areas: {selected_area}"
+    if observer_reason:
+        msg += f"\nPotential error from previous execution: {observer_reason}"
     assistant_message = {
         "role": "assistant",
-        "content": f"Selected agents: {', '.join(agent_list)}\nExecuted tools: {', '.join(executed_tools)}"
+        "content": msg
     }
     
     completion_payload = {
@@ -548,14 +551,18 @@ def ChemEagle_OS(
     )
     print(response)
     
+    # 获取原始响应内容
     raw_content = response.choices[0].message.content
     
+    # 尝试解析 JSON（支持从包含思考过程的文本中提取）
     from get_R_group_sub_agent import extract_json_from_text_with_reasoning
     
     try:
+        # 首先尝试直接解析
         gpt_output = json.loads(raw_content)
         print("DEBUG [OS_D]: Successfully parsed JSON directly")
     except json.JSONDecodeError:
+        # 如果直接解析失败，使用智能提取函数（支持思考模型输出）
         print("WARNING [OS_D]: Direct JSON parsing failed, trying to extract JSON from text...")
         gpt_output = extract_json_from_text_with_reasoning(raw_content)
         
@@ -564,12 +571,35 @@ def ChemEagle_OS(
         else:
             print(f"ERROR [OS_D]: Failed to parse JSON from model response")
             print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
-            print("WARNING [OS_D]: Returning raw content as fallback")
-            return {"content": raw_content, "parsed": False}
-    
+            # 如果无法解析为 JSON，直接返回工具结果
+            print("WARNING [OS_D]: Returning tool results as fallback")
+            # 从 execution_logs 中提取主 area 工具结果（排除 text_extraction）
+            tool_results_dict = {}
+            for log in execution_logs:
+                t_name = log.get("name")
+                t_result = log.get("result")
+                if t_name and t_name != "text_extraction_agent" and t_result is not None:
+                    tool_results_dict[t_name] = t_result
+            if len(tool_results_dict) == 1:
+                single_result = list(tool_results_dict.values())[0]
+                if isinstance(single_result, dict):
+                    single_result = _validate_and_fix_smiles_in_dict(single_result)
+                    if text_extraction_result is not None:
+                        single_result["text_extraction"] = text_extraction_result
+                return single_result
+            else:
+                for t_name, t_result in tool_results_dict.items():
+                    if isinstance(t_result, dict):
+                        tool_results_dict[t_name] = _validate_and_fix_smiles_in_dict(t_result)
+                if text_extraction_result is not None:
+                    tool_results_dict["text_extraction"] = text_extraction_result
+                return tool_results_dict
+
+    gpt_output = _validate_and_fix_smiles_in_dict(gpt_output)
+    if text_extraction_result is not None:
+        gpt_output["text_extraction"] = text_extraction_result
     print(gpt_output)
     return gpt_output
-
 
 
 if __name__ == "__main__":
