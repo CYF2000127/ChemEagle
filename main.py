@@ -9,14 +9,13 @@ from PIL import Image
 import os
 from rxnim import RxnIM
 import base64
-import re
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from get_molecular_agent import process_reaction_image_with_multiple_products_and_text_correctR, process_reaction_image_with_multiple_products_and_text_correctmultiR
 from get_reaction_agent import get_reaction_withatoms_correctR
 from get_R_group_sub_agent import process_reaction_image_with_table_R_group, process_reaction_image_with_product_variant_R_group,get_full_reaction_template_OS,get_full_reaction_template, get_multi_molecular_full,get_multi_molecular_full_OS, process_reaction_image_with_table_R_group_OS,process_reaction_image_with_product_variant_R_group_OS,get_full_reaction_OS,get_reaction_OS
 from get_observer import action_observer_agent, plan_observer_agent,action_observer_agent_OS, plan_observer_agent_OS
 from get_text_agent import text_extraction_agent, text_extraction_agent_OS
-from chemietoolkit.helper import _parse_planner_output, _select_main_area, _has_text_extraction
+from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _select_main_area, _has_text_extraction
 
 model = ChemIEToolkit(device=torch.device('cpu')) 
 ckpt_path = "./rxn.ckpt"
@@ -270,41 +269,51 @@ def ChemEagle(
             graphical_input=main_area_result,
         )
 
-    msg = f"Executed areas: {selected_area}"
-    if observer_reason:
-        msg += f"\nPotential error from previous execution: {observer_reason}"
+    tool_call_id = results[0]['tool_call_id']
     assistant_message = {
         "role": "assistant",
-        "content": msg
-    }
-    
-    completion_payload = {
-        'model': 'gpt-5-mini',
-        'messages': [
-            {'role': 'system', 'content': 'You are a helpful assistant.'},
+        "content": None,
+        "tool_calls": [
             {
-                'role': 'user',
-                'content': [
-                    {
-                        'type': 'text',
-                        'text': prompt
-                    },
-                    {
-                        'type': 'image_url',
-                        'image_url': {
-                            'url': f'data:image/png;base64,{base64_image}'
-                        }
-                    }
-                ]
-            },
-            assistant_message,
-            *results
-            ],
+                "id": tool_call_id,
+                "type": "function",
+                "function": {
+                    "name": selected_area,
+                    "arguments": json.dumps({"image_path": image_path}),
+                },
+            }
+        ],
     }
 
+    messages_list = [
+        {'role': 'system', 'content': 'You are a helpful assistant.'},
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'text',
+                    'text': prompt
+                },
+                {
+                    'type': 'image_url',
+                    'image_url': {
+                        'url': f'data:image/png;base64,{base64_image}'
+                    }
+                }
+            ]
+        },
+        assistant_message,
+        *results,
+    ]
+    if observer_reason:
+        messages_list.append({
+            'role': 'user',
+            'content': f"Note: the previous execution had potential errors: {observer_reason}. Please review the results carefully.",
+        })
+
     response = client.chat.completions.create(
-        model=completion_payload["model"],
-        messages=completion_payload["messages"],
+        model='gpt-5-mini',
+        messages=messages_list,
         response_format={ 'type': 'json_object' },
     )
 
@@ -468,33 +477,43 @@ def ChemEagle_OS(
             api_key=api_key,
         )
 
-    msg = f"Executed areas: {selected_area}"
-    if observer_reason:
-        msg += f"\nPotential error from previous execution: {observer_reason}"
+    tool_call_id = results[0]['tool_call_id']
     assistant_message = {
         "role": "assistant",
-        "content": msg
-    }
-    
-    completion_payload = {
-        'model': model_name,
-        'messages': [
-            {'role': 'system', 'content': 'You are a helpful assistant.'},
+        "content": None,
+        "tool_calls": [
             {
-                'role': 'user',
-                'content': [
-                    {'type': 'text', 'text': prompt},
-                    {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{base64_image}' }}
-                ],
-            },
-            assistant_message,
-            *results
-            ],
+                "id": tool_call_id,
+                "type": "function",
+                "function": {
+                    "name": selected_area,
+                    "arguments": json.dumps({"image_path": image_path}),
+                },
+            }
+        ],
     }
 
+    messages_list = [
+        {'role': 'system', 'content': 'You are a helpful assistant.'},
+        {
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': prompt},
+                {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{base64_image}' }}
+            ],
+        },
+        assistant_message,
+        *results,
+    ]
+    if observer_reason:
+        messages_list.append({
+            'role': 'user',
+            'content': f"Note: the previous execution had potential errors: {observer_reason}. Please review the results carefully.",
+        })
+
     response = client.chat.completions.create(
-        model=completion_payload["model"],
-        messages=completion_payload["messages"],
+        model=model_name,
+        messages=messages_list,
         temperature=0,
     )
     print(response)
@@ -527,7 +546,7 @@ def ChemEagle_OS(
                 if isinstance(single_result, dict):
                     if text_extraction_result is not None:
                         single_result["text_extraction"] = text_extraction_result
-                return single_result
+                    return single_result
             else:
                 if text_extraction_result is not None:
                     tool_results_dict["text_extraction"] = text_extraction_result
@@ -537,7 +556,3 @@ def ChemEagle_OS(
         gpt_output["text_extraction"] = text_extraction_result
     print(gpt_output)
     return gpt_output
-
-
-if __name__ == "__main__":
-    model = ChemEagle()
