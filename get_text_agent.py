@@ -26,6 +26,7 @@ AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT")
 API_VERSION = os.getenv("API_VERSION")
 
 
+# 配置 Tesseract OCR 路径（Windows）
 def configure_tesseract():
     """自动检测并配置 Tesseract OCR 可执行文件路径"""
     # 如果已经配置过，直接返回
@@ -226,7 +227,7 @@ def NER_from_text_in_image(image_path: str) -> dict:
 
 
 
-def text_extraction_agent(image_path: str) -> dict:
+def text_extraction_agent(image_path: str, graphical_input: Optional[dict] = None) -> dict:
     """
     Agent that calls two tools:
       1) extract_reactions_from_text_in_image
@@ -320,6 +321,9 @@ Here is my step-by-step analysis:
   "annotated_text": "In 2010, an enantioselective formal [3+2] cycloaddition of NHC-bound azolium enolates [reactant][MULTIPLE] and oxaziridines [reactant][SYSTEMATIC] was described by Ye and co-workers. Aryl(alkyl)-disubstituted ketenes [reactant] were used as precursors of azolium enolates. A bifunctional NHC [ABBREVIATION] precatalyst B27 [reagent][IDENTIFIERS][SMILES:CCCC(C=CC=C1)=C1[N+]2=CN3[C@H](C(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))O)CCC3=N2.F[B-](F)(F)F] bearing a free hydroxyl group was employed."
 }
 """
+
+    if graphical_input:
+        prompt += f"\n\nGraphical extraction results from the reaction image (use this for alignment with text entities):\n{json.dumps(graphical_input, ensure_ascii=False, indent=2)}"
 
     messages = [
         {"role": "system", "content": "You are the Text Extraction Agent. Your task is to extract text descriptions from chemical reaction images (or process direct text input), identify chemical entities and reactions within that text, and output a structured annotation."},
@@ -437,6 +441,7 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
 def text_extraction_agent_OS(
     image_path: str,
     *,
+    graphical_input: Optional[dict] = None,
     model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
@@ -533,6 +538,9 @@ Here is my step-by-step analysis:
 ```
 
 """
+
+    if graphical_input:
+        prompt += f"\n\nGraphical extraction results from the reaction image (use this for alignment with text entities):\n{json.dumps(graphical_input, ensure_ascii=False, indent=2)}"
 
     messages = [
         {"role": "system", "content": "You are the Text Extraction Agent. Your task is to extract text descriptions from chemical reaction images (or process direct text input), identify chemical entities and reactions within that text, and output a structured annotation."},
