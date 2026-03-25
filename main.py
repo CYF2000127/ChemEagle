@@ -583,14 +583,14 @@ def ChemEagle_OS(
             if len(tool_results_dict) == 1:
                 single_result = list(tool_results_dict.values())[0]
                 if isinstance(single_result, dict):
-                    single_result = _validate_and_fix_smiles_in_dict(single_result)
+                    single_result = single_result
                     if text_extraction_result is not None:
                         single_result["text_extraction"] = text_extraction_result
                 return single_result
             else:
                 for t_name, t_result in tool_results_dict.items():
                     if isinstance(t_result, dict):
-                        tool_results_dict[t_name] = _validate_and_fix_smiles_in_dict(t_result)
+                        tool_results_dict[t_name] = t_result
                 if text_extraction_result is not None:
                     tool_results_dict["text_extraction"] = text_extraction_result
                 return tool_results_dict
