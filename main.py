@@ -595,7 +595,6 @@ def ChemEagle_OS(
                     tool_results_dict["text_extraction"] = text_extraction_result
                 return tool_results_dict
 
-    gpt_output = _validate_and_fix_smiles_in_dict(gpt_output)
     if text_extraction_result is not None:
         gpt_output["text_extraction"] = text_extraction_result
     print(gpt_output)
