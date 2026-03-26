@@ -895,9 +895,6 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
     model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    # model_name="gemini-2.5-flash",
-    # base_url="https://generativelanguage.googleapis.com/v1beta/openai/", 
-    # api_key="AIzaSyB2VzqWUB2MfYIik8IbQQ9Uk9mup6OsajE"  
 ) -> dict:
     """
     与 process_reaction_image_with_multiple_products_and_text_correctmultiR 流程保持一致，但改用兼容 OpenAI Chat Completions 协议的本地/自建模型（如 vLLM 或 Ollama）。
