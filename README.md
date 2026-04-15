@@ -121,7 +121,8 @@ print(results)
 Depending on the model size and architecture (Dense vs. MoE), the VRAM requirements vary significantly. Below are the estimated minimum physical VRAM requirements for the Qwen3-VL and Qwen3.5 series, including both BF16 and FP8/INT8 quantized versions. 
 
 ###### Qwen3-VL Series
-*Note: Vision-Language models require additional VRAM for vision encoders and high-resolution image context. The estimates below include basic KV Cache, but we recommend reserving an extra 2-4 GB for complex vision tasks.*
+*Note 1: Vision-Language models require additional VRAM for vision encoders and high-resolution image context. The estimates below include basic KV Cache, but we recommend reserving an extra 2-4 GB for complex vision tasks.*
+*Note 2: For MoE models, all expert weights must be loaded into memory simultaneously. Therefore, their VRAM footprint depends on the total parameter count, not just the activated parameters.*
 
 | Model Version | Architecture | BF16 VRAM | FP8/INT8 VRAM |
 | :--- | :--- | :--- | :--- |
@@ -133,7 +134,7 @@ Depending on the model size and architecture (Dense vs. MoE), the VRAM requireme
 | **Qwen3-VL-235B-A22B**| MoE | ~450-550 GB | **~225-275 GB** |
 
 ###### Qwen3.5 Series
-*Note: For MoE models (e.g., 35B-A3B, 122B-A10B), all expert weights must be loaded into memory simultaneously. Therefore, their VRAM footprint depends on the total parameter count, not just the activated parameters.*
+
 
 | Model Version | Architecture | BF16 VRAM | FP8/INT8 VRAM |
 | :--- | :--- | :--- | :--- |
