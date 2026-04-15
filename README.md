@@ -115,7 +115,7 @@ print(results)
 ##### Prerequisites
 - NVIDIA GPU with CUDA support (recommended)
 - Docker installed (for Windows vLLM deployment)
-- Download the Qwen3-VL series model weights (We provided `Qwen3-VL-32B-Instruct-AWQ`) from [HuggingFace](https://huggingface.co/CYF200127/Qwen3-VL-32B-Instruct-AWQ).
+- Download the Qwen3-VL or Qwen3.5 series model weights (We provided `Qwen3-VL-32B-Instruct-AWQ`) from [HuggingFace](https://huggingface.co/CYF200127/Qwen3-VL-32B-Instruct-AWQ).
 
 ##### Hardware Requirements (VRAM)
 Depending on the model size and architecture (Dense vs. MoE), the VRAM requirements vary significantly. Below are the estimated minimum physical VRAM requirements for the Qwen3-VL and Qwen3.5 series, including both BF16 and FP8/INT8 quantized versions. 
