@@ -117,6 +117,34 @@ print(results)
 - Docker installed (for Windows vLLM deployment)
 - Download the Qwen3-VL series model weights (We provided `Qwen3-VL-32B-Instruct-AWQ`) from [HuggingFace](https://huggingface.co/CYF200127/Qwen3-VL-32B-Instruct-AWQ).
 
+##### Hardware Requirements (VRAM)
+Depending on the model size and architecture (Dense vs. MoE), the VRAM requirements vary significantly. Below are the estimated minimum physical VRAM requirements for the Qwen3-VL and Qwen3.5 series, including both BF16 and FP8/INT8 quantized versions. 
+
+###### Qwen3-VL Series (Multimodal)
+*Note: Vision-Language models require additional VRAM for vision encoders and high-resolution image context. The estimates below include basic KV Cache, but we recommend reserving an extra 2-4 GB for complex vision tasks.*
+
+| Model Version | Architecture | BF16 VRAM | FP8/INT8 VRAM |
+| :--- | :--- | :--- | :--- |
+| **Qwen3-VL-2B** | Dense | ~4-5 GB | **~2-3 GB** |
+| **Qwen3-VL-4B** | Dense | ~8-10 GB | **~4-5 GB** |
+| **Qwen3-VL-8B** | Dense | ~16-20 GB | **~8-10 GB** |
+| **Qwen3-VL-30B-A3B**| MoE | ~60-75 GB | **~30-38 GB** |
+| **Qwen3-VL-32B** | Dense | ~64-80 GB | **~32-40 GB** |
+| **Qwen3-VL-235B-A22B**| MoE | ~450-550 GB | **~225-275 GB** |
+
+###### Qwen3.5 Series (Language)
+*Note: For MoE models (e.g., 35B-A3B, 122B-A10B), all expert weights must be loaded into memory simultaneously. Therefore, their VRAM footprint depends on the total parameter count, not just the activated parameters.*
+
+| Model Version | Architecture | BF16 VRAM | FP8/INT8 VRAM |
+| :--- | :--- | :--- | :--- |
+| **Qwen3.5-0.8B / 2B** | Dense | ~3-5 GB | **< 3 GB** |
+| **Qwen3.5-4B** | Dense | ~8-10 GB | **~4.5-6 GB** |
+| **Qwen3.5-9B** | Dense | ~18-20 GB | **~9-11 GB** |
+| **Qwen3.5-27B** | Dense | ~54-60 GB | **~27-32 GB** |
+| **Qwen3.5-35B-A3B** | MoE | ~70-75 GB | **~35-40 GB** |
+| **Qwen3.5-122B-A10B** | MoE | ~245-260 GB | **~122-135 GB** |
+| **Qwen3.5-397B-A17B** | MoE | ~800-810 GB | **~400-430 GB** |
+
 1. Setup Python Environment
 ```bash
 conda create -n chemeagle python=3.10
