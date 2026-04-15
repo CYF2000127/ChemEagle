@@ -30,7 +30,7 @@ In this work, we present ChemEAGLE, a multimodal large language model (MLLM)-bas
 | **Data Structure Agent**                            | Output         | Compiles structured output for downstream applications              |
 
 
-### 🛠️ Toolkits and Web services Used in ChemEAGLE
+### 🛠️ Toolkits and Web Services Used in ChemEAGLE
 | Tool Name               | Category                          | Description                                            |
 | ----------------------- | --------------------------------- | ------------------------------------------------------ |
 | **TesseractOCR**        | Computer Vision                   | Optical character recognition for text in graphics       |
@@ -43,9 +43,9 @@ In this work, we present ChemEAGLE, a multimodal large language model (MLLM)-bas
 | **SMILESReconstructor** | Molecular Recognition             | Reconstructs reactant SMILES from product variants     |
 | **RxnImgParser**        | Reaction Image Parsing            | Parsing reaction template images into bounding boxes and components |
 | **RxnConInterpreter**   | Reaction Image Parsing            | Assigns condition roles to extracted condition text     |
-|**OPSIN** |  Web service for name2SMILES              | https://opsin.ch.cam.ac.uk/opsin/ |
-|**PUBCHEM**|      Web service for name2SMILES         | https://pubchem.ncbi.nlm.nih.gov/rest/pug|
-|**CIR** |       Web service for name2SMILES     | https://cactus.nci.nih.gov/chemical/structure|
+|**OPSIN** |  Web Service for Name2SMILES              | https://opsin.ch.cam.ac.uk/opsin/ |
+|**PUBCHEM**|      Web Service for Name2SMILES         | https://pubchem.ncbi.nlm.nih.gov/rest/pug|
+|**CIR** |       Web Service for Name2SMILES     | https://cactus.nci.nih.gov/chemical/structure|
 
 
 
