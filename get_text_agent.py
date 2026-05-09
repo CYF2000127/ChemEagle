@@ -26,87 +26,87 @@ AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT")
 API_VERSION = os.getenv("API_VERSION")
 
 
-# 配置 Tesseract OCR 路径（Windows）
+# Configure Tesseract OCR path (Windows)
 def configure_tesseract():
-    """自动检测并配置 Tesseract OCR 可执行文件路径"""
-    # 如果已经配置过，直接返回
+    """Automatically detect and configure the Tesseract OCR executable path"""
+    # If already configured, return directly
     if hasattr(pytesseract.pytesseract, 'tesseract_cmd') and pytesseract.pytesseract.tesseract_cmd:
         if os.path.exists(pytesseract.pytesseract.tesseract_cmd):
             return
     
-    # 常见的 Windows 安装路径（包括项目目录下的自定义路径）
+    # Common Windows installation paths (including custom paths under the project directory)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     possible_paths = [
-        # 用户指定的绝对路径（最高优先级）
+        # User-specified absolute path (highest priority)
         r"F:\chemeagle\Tesseract-OCR\tesseract.exe",
-        # 项目目录下的自定义路径
+        # Custom path under the project directory
         os.path.join(script_dir, "Tesseract-OCR", "tesseract.exe"),
         os.path.join(os.path.dirname(script_dir), "Tesseract-OCR", "tesseract.exe"),
-        # 标准安装路径
+        # Standard installation path
         r"C:\Program Files\Tesseract-OCR\tesseract.exe",
         r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
         os.path.expanduser(r"~\AppData\Local\Tesseract-OCR\tesseract.exe"),
         r"C:\Users\Administrator\AppData\Local\Tesseract-OCR\tesseract.exe",
     ]
     
-    # 首先尝试从 PATH 中查找
+    # First try to find it in PATH
     try:
         tesseract_cmd = shutil.which("tesseract")
         if tesseract_cmd and os.path.exists(tesseract_cmd):
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-            print(f"✓ 从 PATH 中找到 Tesseract: {tesseract_cmd}")
+            print(f"✓ Found Tesseract in PATH: {tesseract_cmd}")
             return
     except Exception:
         pass
     
-    # 如果 PATH 中没有，尝试常见路径
+    # If not found in PATH, try common paths
     for path in possible_paths:
-        # 规范化路径
+        # Normalize path
         normalized_path = os.path.normpath(path)
         if os.path.exists(normalized_path):
             pytesseract.pytesseract.tesseract_cmd = normalized_path
-            print(f"✓ 找到 Tesseract: {normalized_path}")
+            print(f"✓ Found Tesseract: {normalized_path}")
             return
     
-    # 如果都没找到，提示用户
-    print("⚠️  警告: 未找到 Tesseract OCR 可执行文件")
-    print("已尝试的路径:")
+    # If still not found, prompt the user
+    print("⚠️  Warning: Tesseract OCR executable not found")
+    print("Paths tried:")
     for path in possible_paths:
         normalized_path = os.path.normpath(path)
         exists = "✓" if os.path.exists(normalized_path) else "✗"
         print(f"  {exists} {normalized_path}")
-    print("\n请执行以下步骤之一:")
-    print("1. 确保 Tesseract OCR 已正确安装")
-    print("2. 或者手动设置路径:")
+    print("\nPlease do one of the following:")
+    print("1. Make sure Tesseract OCR is installed correctly")
+    print("2. Or set the path manually:")
     print("   pytesseract.pytesseract.tesseract_cmd = r'F:\\chemeagle\\Tesseract-OCR\\tesseract.exe'")
     raise FileNotFoundError(
-        "Tesseract OCR 未安装或不在 PATH 中。"
-        "请访问 https://github.com/UB-Mannheim/tesseract/wiki 下载安装。"
+        "Tesseract OCR is not installed or not in PATH."
+        "Please visit https://github.com/UB-Mannheim/tesseract/wiki for installation."
     )
 
-# 初始化 Tesseract 配置
+# Initialize Tesseract configuration
 configure_tesseract()
 
 
 def merge_sentences(sentences):
     """
-    合并一个句子片段列表为一个连贯的段落字符串。
+    Merge a list of sentence fragments into a coherent paragraph string.
     """
-    # 去除每条片段前后空白，并剔除空串
+    # Trim whitespace around each fragment and remove empty strings
     cleaned = [s.strip() for s in sentences if s.strip()]
-    # 用空格拼接，恢复成完整段落
+    # Join with spaces to reconstruct a full paragraph
     paragraph = [" ".join(cleaned)]
     return paragraph
 
 
 def split_text_into_sentences(text: str) -> list:
     """
-    将文本分割成句子，避免文本过长导致的问题。
-    使用简单的标点符号分割，保留句子边界。
+    Split text into sentences to avoid issues caused by overly long text.
+    Use simple punctuation-based splitting while preserving sentence boundaries.
     """
-    # 按句号、问号、感叹号分割，但保留这些标点
+    # Split by periods, question marks, and exclamation marks, while keeping punctuation
     sentences = re.split(r'([.!?]+)', text)
-    # 合并标点和前面的文本
+    # Merge punctuation with preceding text
     result = []
     for i in range(0, len(sentences) - 1, 2):
         if i + 1 < len(sentences):
@@ -116,16 +116,16 @@ def split_text_into_sentences(text: str) -> list:
         if sentence:
             result.append(sentence)
     
-    # 如果没有找到句子边界，尝试按换行符分割
+    # If no sentence boundary is found, try splitting by newlines
     if not result:
         result = [line.strip() for line in text.splitlines() if line.strip()]
     
-    # 如果还是没有，返回整个文本（但限制长度）
+    # If still not found, return the whole text (with length limit)
     if not result:
-        # 限制单个句子长度，避免超过模型限制
-        max_length = 500  # 字符数限制
+        # Limit single sentence length to avoid exceeding model limits
+        max_length = 500  # character limit
         if len(text) > max_length:
-            # 按空格分割成更小的块
+            # Split by spaces into smaller chunks
             words = text.split()
             chunks = []
             current_chunk = []
@@ -152,74 +152,74 @@ def split_text_into_sentences(text: str) -> list:
 
 def extract_reactions_from_text_in_image(image_path: str) -> dict:
     """
-    从化学反应图像中提取文本并识别反应。
+    Extract text from a chemical reaction image and identify reactions.
 
-    参数：
-      image_path: 图像文件路径
+    Arguments:
+      image_path: image file path
 
-    返回：
+    Returns:
       {
-        'raw_text': OCR 提取的完整文本（str),
-        'paragraph': 合并后的段落文本 (str),
-        'reactions': RxnExtractor 输出的反应列表 (list)
+        'raw_text': full text extracted by OCR (str),
+        'paragraph': merged paragraph text (str),
+        'reactions': reaction list output by RxnExtractor (list)
       }
     """
-    # 模型目录和设备参数（可按需修改）
+    # Model directory and device parameters (adjust as needed)
     model_dir = "./cre_models_v0.1"
     device = "cpu"
 
-    # 1. OCR 提取文本
+    # 1. OCR text extraction
     img = Image.open(image_path)
     raw_text = pytesseract.image_to_string(img)
 
-    # 2. 将多行文本合并为单段落
+    # 2. Merge multi-line text into a single paragraph
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     paragraph = " ".join(lines)
 
-    # 3. 将文本分割成句子，避免长度问题
+    # 3. Split text into sentences to avoid length issues
     sentences = split_text_into_sentences(paragraph)
     
-    # 4. 初始化化学反应提取器
+    # 4. Initialize chemical reaction extractor
     use_cuda = (device.lower() == "cuda")
     rxn_extractor = RxnExtractor(model_dir, use_cuda=use_cuda)
 
-    # 5. 对每个句子提取反应（避免长度不匹配问题）
+    # 5. Extract reactions for each sentence (avoid length mismatch issues)
     all_reactions = []
     try:
         reactions = rxn_extractor.get_reactions(sentences)
         all_reactions = reactions
     except AssertionError as e:
-        # 如果还是出错，尝试逐个句子处理
-        print(f"警告: 批量处理失败，尝试逐个句子处理: {e}")
+        # If it still fails, try processing sentence by sentence
+        print(f"Warning: batch processing failed, trying sentence-by-sentence processing: {e}")
         all_reactions = []
         for sent in sentences:
             try:
                 sent_reactions = rxn_extractor.get_reactions([sent])
                 all_reactions.extend(sent_reactions)
             except Exception as sent_e:
-                print(f"警告: 跳过句子（处理失败）: {sent[:50]}... 错误: {sent_e}")
+                print(f"Warning: skipping sentence (processing failed): {sent[:50]}... Error: {sent_e}")
                 continue
 
     return all_reactions 
 
 def NER_from_text_in_image(image_path: str) -> dict:
-    # 模型目录和设备参数（可按需修改）
+    # Model directory and device parameters (adjust as needed)
     model_dir = "./cre_models_v0.1"
     device = "cpu"
 
-    # 1. OCR 提取文本
+    # 1. OCR text extraction
     img = Image.open(image_path)
     raw_text = pytesseract.image_to_string(img)
 
-    # 2. 将多行文本合并为单段落
+    # 2. Merge multi-line text into a single paragraph
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     paragraph = " ".join(lines)
 
-    # 3. 初始化化学反应提取器
+    # 3. Initialize chemical reaction extractor
     use_cuda = (device.lower() == "cuda")
     rxn_extractor = RxnExtractor(model_dir, use_cuda=use_cuda)
 
-    # 4. 提取反应（注意 get_reactions 需要列表输入）
+    # 4. Extract reactions (note: get_reactions requires list input)
     predictions = model2.predict_strings([paragraph])
 
     return predictions 
@@ -390,20 +390,20 @@ Here is my step-by-step analysis:
 
 def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, **kwargs):
     """
-    通用的 API 调用重试函数，支持指数退避策略。
+    Generic API call retry function with exponential backoff support.
     
     Args:
-        func: 要调用的函数
-        max_retries: 最大重试次数
-        base_delay: 基础延迟时间（秒）
-        backoff_factor: 退避因子（每次重试延迟时间 = base_delay * backoff_factor^attempt）
-        *args, **kwargs: 传递给 func 的参数
+        func: function to call
+        max_retries: maximum number of retries
+        base_delay: base delay time (seconds)
+        backoff_factor: backoff factor (retry delay = base_delay * backoff_factor^attempt)
+        *args, **kwargs: parameters passed to func
     
     Returns:
-        func 的返回值
+        return value of func
     
     Raises:
-        最后一次尝试的异常
+        exception from the final attempt
     """
     last_exception = None
     
@@ -415,27 +415,27 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
             error_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             error_message = str(e)
             
-            # 检查是否是 503 错误或其他可重试的错误
+            # Check whether this is a 503 error or another retryable error
             if error_code == 503 or 'overloaded' in error_message.lower() or '503' in error_message:
                 if attempt < max_retries - 1:
                     delay = base_delay * (backoff_factor ** attempt)
-                    print(f"⚠️ API 调用失败 (503/过载)，第 {attempt + 1}/{max_retries} 次尝试。{delay:.1f} 秒后重试...")
+                    print(f"⚠️ API call failed (503/overloaded), attempt {attempt + 1}/{max_retries}. Retrying in {delay:.1f} seconds...")
                     time.sleep(delay)
                     continue
                 else:
-                    print(f"❌ API 调用失败，已达到最大重试次数 ({max_retries})")
+                    print(f"❌ API call failed, reached maximum retries ({max_retries})")
                     raise
             else:
-                # 其他类型的错误，直接抛出
+                # Other error types, raise directly
                 raise
         except Exception as e:
-            # 其他未知错误，直接抛出
+            # Other unknown errors, raise directly
             raise
     
-    # 如果所有重试都失败了
+    # If all retries failed
     if last_exception:
         raise last_exception
-    raise RuntimeError("API 调用失败，未知错误")
+    raise RuntimeError("API call failed, unknown error")
 
 
 def text_extraction_agent_OS(
@@ -566,15 +566,15 @@ Here is my step-by-step analysis:
             tools=tools,
             tool_choice="auto",
             temperature=0,
-            # response_format={"type": "json_object"},  # vLLM 不支持同时使用 response_format 和 tools
+            # response_format={"type": "json_object"},  # vLLM does not support using response_format and tools simultaneously
         )
     except Exception as e:
         error_msg = str(e)
         if "tool" in error_msg.lower() or "tool-call" in error_msg.lower():
-            print(f"⚠️ 警告: vLLM 不支持工具调用: {e}")
-            print("提示: 请重新启动 vLLM 容器，添加以下参数:")
+            print(f"⚠️ Warning: vLLM does not support tool calling: {e}")
+            print("Tip: restart the vLLM container with the following arguments:")
             print("  --enable-auto-tool-choice --tool-call-parser auto")
-            print("或者继续使用 Ollama（原生支持工具调用）")
+            print("Or continue using Ollama (native tool-calling support)")
             raise
         else:
             raise
@@ -635,7 +635,7 @@ Here is my step-by-step analysis:
         model=model_name,
         messages=messages,
         temperature=0,
-        # response_format={"type": "json_object"},  # vLLM 可能不支持
+        # response_format={"type": "json_object"},  # vLLM may not support this
     )
 
     # Parse response (support extracting JSON from text with reasoning)
@@ -655,7 +655,6 @@ Here is my step-by-step analysis:
             pass
         
         # If all else fails, return raw content wrapped in dict
-        print(f"⚠️ 警告: 无法解析 JSON，返回原始内容")
+        print(f"⚠️ Warning: unable to parse JSON, returning raw content")
         print(f"Raw content (last 500 chars):\n{raw_content[-500:]}")
         return {"content": raw_content}
-

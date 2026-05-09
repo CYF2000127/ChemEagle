@@ -31,27 +31,27 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
             error_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             error_message = str(e)
             
-            # 检查是否是 503 错误或其他可重试的错误
+            # Check whether this is a 503 error or another retryable error
             if error_code == 503 or 'overloaded' in error_message.lower() or '503' in error_message:
                 if attempt < max_retries - 1:
                     delay = base_delay * (backoff_factor ** attempt)
-                    print(f"⚠️ API 调用失败 (503/过载)，第 {attempt + 1}/{max_retries} 次尝试。{delay:.1f} 秒后重试...")
+                    print(f"⚠️ API call failed (503/overloaded), attempt {attempt + 1}/{max_retries}. Retrying in {delay:.1f} seconds...")
                     time.sleep(delay)
                     continue
                 else:
-                    print(f"❌ API 调用失败，已达到最大重试次数 ({max_retries})")
+                    print(f"❌ API call failed, reached maximum retries ({max_retries})")
                     raise
             else:
-                # 其他类型的错误，直接抛出
+                # Other error types, raise directly
                 raise
         except Exception as e:
-            # 其他未知错误，直接抛出
+            # Other unknown errors, raise directly
             raise
     
-    # 如果所有重试都失败了
+    # If all retries failed
     if last_exception:
         raise last_exception
-    raise RuntimeError("API 调用失败，未知错误")
+    raise RuntimeError("API call failed, unknown error")
 
 ckpt_path = "./rxn.ckpt"
 model1 = RxnIM(ckpt_path, device=torch.device('cpu'))
@@ -115,14 +115,14 @@ def get_full_reaction(image_path: str) -> dict:
     for reaction in raw_prediction:
         for section in ("reactants", "products", "conditions"):
             for entry in reaction.get(section, []):
-                # 1) 保留 coords 三位小数
+                # 1) Keep coords to three decimal places
                 coords = entry.get("coords")
                 if isinstance(coords, list):
                     entry["coords"] = [
                         [round(val, 3) for val in point]
                         for point in coords
                     ]
-                # 2) 删除不需要的字段
+                # 2) Remove unnecessary fields
                 for key in ("molfile", "atoms", "bonds"):
                     entry.pop(key, None)
 
@@ -133,29 +133,29 @@ def get_full_reaction(image_path: str) -> dict:
 
 def get_reaction_withatoms(image_path: str) -> dict:
     """
-    输入化学反应图像路径，通过 GPT 模型和 OpenChemIE 提取反应信息并返回整理后的反应数据。
+    Input a chemical reaction image path, use GPT and OpenChemIE to extract reaction information, and return organized reaction data.
 
     Args:
-        image_path (str): 图像文件路径。
+        image_path (str): image file path.
 
     Returns:
-        dict: 整理后的反应数据，包括反应物、产物和反应模板。
+        dict: organized reaction data, including reactants, products, and reaction templates.
     """
-    # 初始化 OpenChemIE 模型和 Azure OpenAI 客户端
+    # Initialize OpenChemIE model and Azure OpenAI client
     client = AzureOpenAI(
         api_key=API_KEY,
         api_version=API_VERSION,
         azure_endpoint=AZURE_ENDPOINT
     )
 
-    # 加载图像并编码为 Base64
+    # Load image and encode as Base64
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-    # GPT 工具调用配置
+    # GPT tool-calling configuration
     tools = [
         {
         'type': 'function',
@@ -177,7 +177,7 @@ def get_reaction_withatoms(image_path: str) -> dict:
             },
     ]
 
-    # 提供给 GPT 的消息内容
+    # Message content provided to GPT
     with open('./prompt/prompt_getreaction.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
     messages = [
@@ -191,7 +191,7 @@ def get_reaction_withatoms(image_path: str) -> dict:
         }
     ]
 
-    # 调用 GPT 接口
+    # Call GPT API
     response = client.chat.completions.create(
     model = 'gpt-4o',
     temperature = 0,
@@ -215,16 +215,16 @@ def get_reaction_withatoms(image_path: str) -> dict:
     ],
     tools = tools)
     
-# Step 1: 工具映射表
+# Step 1: Tool mapping table
     TOOL_MAP = {
         'get_reaction': get_reaction,
     }
 
-    # Step 2: 处理多个工具调用
+    # Step 2: Handle multiple tool calls
     tool_calls = response.choices[0].message.tool_calls
     results = []
 
-    # 遍历每个工具调用
+    # Iterate through each tool call
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
         tool_arguments = tool_call.function.arguments
@@ -233,15 +233,15 @@ def get_reaction_withatoms(image_path: str) -> dict:
         tool_args = json.loads(tool_arguments)
         
         if tool_name in TOOL_MAP:
-            # 调用工具并获取结果
+            # Call tool and get result
             tool_result = TOOL_MAP[tool_name](image_path)
         else:
             raise ValueError(f"Unknown tool called: {tool_name}")
         
-        # 保存每个工具调用结果
+        # Save each tool-call result
         results.append({
             'role': 'tool',
-            'name': tool_name,  # Gemini API 要求必须包含 name 字段
+            'name': tool_name,  # Gemini API requires the name field
             'content': json.dumps({
                 'image_path': image_path,
                 f'{tool_name}':(tool_result),
@@ -285,7 +285,7 @@ def get_reaction_withatoms(image_path: str) -> dict:
 
 
     
-    # 获取 GPT 生成的结果
+    # Get GPT-generated result
     gpt_output = json.loads(response.choices[0].message.content)
     #print(f"gpt_output1:{gpt_output}")
 
@@ -307,19 +307,19 @@ def get_reaction_withatoms(image_path: str) -> dict:
         symbol_mapping = {}
         for key in ['reactants', 'products']:
             for item in input1.get(key, []):
-                bbox = tuple(item['bbox'])  # 使用 bbox 作为唯一标识
+                bbox = tuple(item['bbox'])  # Use bbox as a unique identifier
                 symbol_mapping[bbox] = item['symbols']
 
         for key in ['reactants', 'products']:
             for item in input2.get(key, []):
-                bbox = tuple(item['bbox'])  # 获取 bbox 作为匹配键
+                bbox = tuple(item['bbox'])  # Get bbox as matching key
 
-                # 如果 bbox 存在于 input1 的映射中，则更新 symbols
+                # If bbox exists in input1 mapping, update symbols
                 if bbox in symbol_mapping:
                     updated_symbols = symbol_mapping[bbox]
                     item['symbols'] = updated_symbols
                     
-                    # 更新 atoms 的 atom_symbol
+                    # Update atom_symbol in atoms
                     if 'atoms' in item:
                         atoms = item['atoms']
                         if len(atoms) != len(updated_symbols):
@@ -328,13 +328,13 @@ def get_reaction_withatoms(image_path: str) -> dict:
                             for atom, symbol in zip(atoms, updated_symbols):
                                 atom['atom_symbol'] = symbol
                     
-                    # 如果 coords 和 edges 存在，调用转换函数生成新的 smiles 和 molfile
+                    # If coords and edges exist, call conversion function to generate new smiles and molfile
                     if 'coords' in item and 'edges' in item:
                         coords = item['coords']
                         edges = item['edges']
                         new_smiles, new_molfile, _ = conversion_function(coords, updated_symbols, edges)
                         
-                        # 替换旧的 smiles 和 molfile
+                        # Replace old smiles and molfile
                         item['smiles'] = new_smiles
                         item['molfile'] = new_molfile
 
@@ -349,15 +349,15 @@ def get_reaction_withatoms(image_path: str) -> dict:
 
 def get_reaction_withatoms_correctR(image_path: str) -> dict:
     """
-    输入化学反应图像路径，通过 GPT 模型和 OpenChemIE 提取反应信息并返回整理后的反应数据。
+    Input a chemical reaction image path, use GPT and OpenChemIE to extract reaction information, and return organized reaction data.
 
     Args:
-        image_path (str): 图像文件路径。
+        image_path (str): image file path.
 
     Returns:
-        dict: 整理后的反应数据，包括反应物、产物和反应模板。
+        dict: organized reaction data, including reactants, products, and reaction templates.
     """
-    # 配置 API Key 和 Azure Endpoint
+    # Configure API Key and Azure Endpoint
     
 
     client = AzureOpenAI(
@@ -366,14 +366,14 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
         azure_endpoint=AZURE_ENDPOINT
     )
 
-    # 加载图像并编码为 Base64
+    # Load image and encode as Base64
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-    # GPT 工具调用配置
+    # GPT tool-calling configuration
     tools = [
         {
         'type': 'function', 
@@ -395,7 +395,7 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
             },
     ]
 
-    # 提供给 GPT 的消息内容
+    # Message content provided to GPT
     with open('./prompt/prompt_Rxn_Tem.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
     messages = [
@@ -409,7 +409,7 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
         }
     ]
 
-    # 调用 GPT 接口
+    # Call GPT API
     response = client.chat.completions.create(
     model = 'gpt-5-mini',
     #temperature = 0,
@@ -433,16 +433,16 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
     ],
     tools = tools)
     
-# Step 1: 工具映射表
+# Step 1: Tool mapping table
     TOOL_MAP = {
         'get_reaction': get_reaction,
     }
 
-    # Step 2: 处理多个工具调用
+    # Step 2: Handle multiple tool calls
     tool_calls = response.choices[0].message.tool_calls
     results = []
 
-    # 遍历每个工具调用
+    # Iterate through each tool call
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
         tool_arguments = tool_call.function.arguments
@@ -451,15 +451,15 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
         tool_args = json.loads(tool_arguments)
         
         if tool_name in TOOL_MAP:
-            # 调用工具并获取结果
+            # Call tool and get result
             tool_result = TOOL_MAP[tool_name](image_path)
         else:
             raise ValueError(f"Unknown tool called: {tool_name}")
         
-        # 保存每个工具调用结果
+        # Save each tool-call result
         results.append({
             'role': 'tool',
-            'name': tool_name,  # Gemini API 要求必须包含 name 字段
+            'name': tool_name,  # Gemini API requires the name field
             'content': json.dumps({
                 'image_path': image_path,
                 f'{tool_name}':(tool_result),
@@ -503,7 +503,7 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
 
 
     
-    # 获取 GPT 生成的结果
+    # Get GPT-generated result
     gpt_output = json.loads(response.choices[0].message.content)
     print(f"gpt_output_rxn:{gpt_output}")
 
@@ -526,23 +526,23 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
         symbol_mapping = {}
         for key in ['reactants', 'conditions', 'products']:
             for item in input1.get(key, []):
-                # 只处理有 symbols 和 bbox 字段的项（conditions 可能只有 text 字段而没有 symbols）
+                # Only handle items with symbols and bbox fields (conditions may only have text without symbols)
                 if 'symbols' in item and 'bbox' in item:
-                    bbox = tuple(item['bbox'])  # 使用 bbox 作为唯一标识
+                    bbox = tuple(item['bbox'])  # Use bbox as a unique identifier
                     symbol_mapping[bbox] = item['symbols']
 
         for key in ['reactants', 'conditions', 'products']:
             for item in input2.get(key, []):
                 if 'bbox' not in item:
                     continue
-                bbox = tuple(item['bbox'])  # 获取 bbox 作为匹配键
+                bbox = tuple(item['bbox'])  # Get bbox as matching key
 
-                # 如果 bbox 存在于 input1 的映射中，则更新 symbols
+                # If bbox exists in input1 mapping, update symbols
                 if bbox in symbol_mapping:
                     updated_symbols = symbol_mapping[bbox]
                     item['symbols'] = updated_symbols
                     
-                    # 更新 atoms 的 atom_symbol
+                    # Update atom_symbol in atoms
                     if 'atoms' in item:
                         atoms = item['atoms']
                         if len(atoms) != len(updated_symbols):
@@ -551,13 +551,13 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
                             for atom, symbol in zip(atoms, updated_symbols):
                                 atom['atom_symbol'] = symbol
                     
-                    # 如果 coords 和 edges 存在，调用转换函数生成新的 smiles 和 molfile
+                    # If coords and edges exist, call conversion function to generate new smiles and molfile
                     if 'coords' in item and 'edges' in item:
                         coords = item['coords']
                         edges = item['edges']
                         new_smiles, new_molfile, _ = conversion_function(coords, updated_symbols, edges)
                         
-                        # 替换旧的 smiles 和 molfile
+                        # Replace old smiles and molfile
                         item['smiles'] = new_smiles
                         item['molfile'] = new_molfile
 
@@ -586,14 +586,14 @@ def get_reaction_withatoms_correctR_OS(
         api_key=api_key,
     )
 
-    # 加载图像并编码为 Base64
+    # Load image and encode as Base64
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-    # GPT 工具调用配置
+    # GPT tool-calling configuration
     tools = [
         {
             'type': 'function', 
@@ -615,7 +615,7 @@ def get_reaction_withatoms_correctR_OS(
         },
     ]
 
-    # 提供给 GPT 的消息内容
+    # Message content provided to GPT
     with open('./prompt/prompt_Rxn_Tem.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
     messages = [
@@ -629,7 +629,7 @@ def get_reaction_withatoms_correctR_OS(
         }
     ]
 
-    # 调用 GPT 接口（带重试机制）
+    # Call GPT API (with retry mechanism)
     response = retry_api_call(
         client.chat.completions.create,
         max_retries=5,
@@ -637,22 +637,22 @@ def get_reaction_withatoms_correctR_OS(
         backoff_factor=2,
         model=model_name,
         temperature=0,
-        #response_format={'type': 'json_object'},  # vLLM 不支持同时使用 response_format 和 tools
+        #response_format={'type': 'json_object'},  # vLLM does not support using response_format and tools simultaneously
         messages=messages,
         tools=tools,
         tool_choice="auto",
     )
     
-    # Step 1: 工具映射表
+    # Step 1: Tool mapping table
     TOOL_MAP = {
         'get_reaction': get_reaction,
     }
 
-    # Step 2: 处理多个工具调用
+    # Step 2: Handle multiple tool calls
     tool_calls = response.choices[0].message.tool_calls or []
     results = []
 
-    # 遍历每个工具调用
+    # Iterate through each tool call
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
         tool_arguments = tool_call.function.arguments
@@ -661,15 +661,15 @@ def get_reaction_withatoms_correctR_OS(
         tool_args = json.loads(tool_arguments)
         
         if tool_name in TOOL_MAP:
-            # 调用工具并获取结果
+            # Call tool and get result
             tool_result = TOOL_MAP[tool_name](image_path)
         else:
             raise ValueError(f"Unknown tool called: {tool_name}")
         
-        # 保存每个工具调用结果
+        # Save each tool-call result
         results.append({
             'role': 'tool',
-            'name': tool_name,  # Gemini API 要求必须包含 name 字段
+            'name': tool_name,  # Gemini API requires the name field
             'content': json.dumps({
                 'image_path': image_path,
                 f'{tool_name}':(tool_result),
@@ -702,7 +702,7 @@ def get_reaction_withatoms_correctR_OS(
             ],
     }
 
-    # Generate new response（带重试机制）
+    # Generate new response (with retry mechanism)
     response = retry_api_call(
         client.chat.completions.create,
         max_retries=5,
@@ -710,21 +710,21 @@ def get_reaction_withatoms_correctR_OS(
         backoff_factor=2,
         model=completion_payload["model"],
         messages=completion_payload["messages"],
-        #response_format={'type': 'json_object'},  # vLLM 可能不支持
+        #response_format={'type': 'json_object'},  # vLLM may not support this
         temperature=0
     )
 
-    # 获取 GPT 生成的结果（支持从包含思考过程的文本中提取）
+    # Get GPT-generated result (supports extraction from text containing reasoning)
     from get_R_group_sub_agent import extract_json_from_text_with_reasoning
     
     raw_content = response.choices[0].message.content
     
     try:
-        # 首先尝试直接解析
+        # First try direct parsing
         gpt_output = json.loads(raw_content)
         print(f"DEBUG [OS]: Successfully parsed JSON directly")
     except json.JSONDecodeError:
-        # 如果直接解析失败，使用智能提取函数
+        # If direct parsing fails, use intelligent extraction function
         print(f"WARNING [OS]: Direct JSON parsing failed, trying to extract JSON from text...")
         gpt_output = extract_json_from_text_with_reasoning(raw_content)
         
@@ -756,23 +756,23 @@ def get_reaction_withatoms_correctR_OS(
         symbol_mapping = {}
         for key in ['reactants', 'conditions', 'products']:
             for item in input1.get(key, []):
-                # 只处理有 symbols 和 bbox 字段的项（conditions 可能只有 text 字段而没有 symbols）
+                # Only handle items with symbols and bbox fields (conditions may only have text without symbols)
                 if 'symbols' in item and 'bbox' in item:
-                    bbox = tuple(item['bbox'])  # 使用 bbox 作为唯一标识
+                    bbox = tuple(item['bbox'])  # Use bbox as a unique identifier
                     symbol_mapping[bbox] = item['symbols']
 
         for key in ['reactants', 'conditions', 'products']:
             for item in input2.get(key, []):
                 if 'bbox' not in item:
                     continue
-                bbox = tuple(item['bbox'])  # 获取 bbox 作为匹配键
+                bbox = tuple(item['bbox'])  # Get bbox as matching key
 
-                # 如果 bbox 存在于 input1 的映射中，则更新 symbols
+                # If bbox exists in input1 mapping, update symbols
                 if bbox in symbol_mapping:
                     updated_symbols = symbol_mapping[bbox]
                     item['symbols'] = updated_symbols
                     
-                    # 更新 atoms 的 atom_symbol
+                    # Update atom_symbol in atoms
                     if 'atoms' in item:
                         atoms = item['atoms']
                         if len(atoms) != len(updated_symbols):
@@ -781,13 +781,13 @@ def get_reaction_withatoms_correctR_OS(
                             for atom, symbol in zip(atoms, updated_symbols):
                                 atom['atom_symbol'] = symbol
                     
-                    # 如果 coords 和 edges 存在，调用转换函数生成新的 smiles 和 molfile
+                    # If coords and edges exist, call conversion function to generate new smiles and molfile
                     if 'coords' in item and 'edges' in item:
                         coords = item['coords']
                         edges = item['edges']
                         new_smiles, new_molfile, _ = conversion_function(coords, updated_symbols, edges)
                         
-                        # 替换旧的 smiles 和 molfile
+                        # Replace old smiles and molfile
                         item['smiles'] = new_smiles
                         item['molfile'] = new_molfile
 
