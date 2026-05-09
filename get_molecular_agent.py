@@ -37,27 +37,27 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
             error_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             error_message = str(e)
             
-            # 检查是否是 503 错误或其他可重试的错误
+            # Check whether this is a 503 error or another retryable error
             if error_code == 503 or 'overloaded' in error_message.lower() or '503' in error_message:
                 if attempt < max_retries - 1:
                     delay = base_delay * (backoff_factor ** attempt)
-                    print(f"⚠️ API 调用失败 (503/过载)，第 {attempt + 1}/{max_retries} 次尝试。{delay:.1f} 秒后重试...")
+                    print(f"⚠️ API call failed (503/overloaded), attempt {attempt + 1}/{max_retries}. Retrying in {delay:.1f} seconds...")
                     time.sleep(delay)
                     continue
                 else:
-                    print(f"❌ API 调用失败，已达到最大重试次数 ({max_retries})")
+                    print(f"❌ API call failed, reached maximum retries ({max_retries})")
                     raise
             else:
-                # 其他类型的错误，直接抛出
+                # Other error types, raise directly
                 raise
         except Exception as e:
-            # 其他未知错误，直接抛出
+            # Other unknown errors, raise directly
             raise
     
-    # 如果所有重试都失败了
+    # If all retries failed
     if last_exception:
         raise last_exception
-    raise RuntimeError("API 调用失败，未知错误")
+    raise RuntimeError("API call failed, unknown error")
 
 
 ckpt_path = "./rxn.ckpt"
@@ -73,50 +73,50 @@ API_VERSION = os.getenv("API_VERSION")
 
 def get_multi_molecular(image_path: str) -> list:
     '''Returns a list of reactions extracted from the image.'''
-    # 打开图像文件
+    # Open image file
     image = Image.open(image_path).convert('RGB')
     
-    # 将图像作为输入传递给模型
+    # Pass image as input to the model
     coref_results = model.extract_molecule_corefs_from_figures([image])
     #print(f"coref_results:{coref_results}")
     for item in coref_results:
         for bbox in item.get("bboxes", []):
             for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs']: #'atoms'
-                bbox.pop(key, None)  # 安全地移除键
+                bbox.pop(key, None)  # Safely remove key
     #print(json.dumps(coref_results))
-    # 返回反应列表，使用 json.dumps 进行格式化
+    # Return reaction list, formatted with json.dumps
     
     return json.dumps(coref_results)
 
 def get_multi_molecular_text_to_correct(image_path: str) -> list:
     '''Returns a list of reactions extracted from the image.'''
-    # 打开图像文件
+    # Open image file
     image = Image.open(image_path).convert('RGB')
     
-    # 将图像作为输入传递给模型
+    # Pass image as input to the model
     coref_results = model.extract_molecule_corefs_from_figures([image])
     for item in coref_results:
         for bbox in item.get("bboxes", []):
             for key in ["category", "bbox", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs']: #'atoms'
-                bbox.pop(key, None)  # 安全地移除键
+                bbox.pop(key, None)  # Safely remove key
     #print(json.dumps(coref_results))
-    # 返回反应列表，使用 json.dumps 进行格式化
+    # Return reaction list, formatted with json.dumps
     
     return json.dumps(coref_results)
 
 def get_multi_molecular_text_to_correct_withatoms(image_path: str) -> list:
     '''Returns a list of reactions extracted from the image.'''
-    # 打开图像文件
+    # Open image file
     image = Image.open(image_path).convert('RGB')
     
-    # 将图像作为输入传递给模型
+    # Pass image as input to the model
     coref_results = model.extract_molecule_corefs_from_figures([image])
     for item in coref_results:
         for bbox in item.get("bboxes", []):
             for key in ["coords","edges","molfile", 'atoms', "bonds", 'category_id', 'score', 'corefs']: #'atoms'
-                bbox.pop(key, None)  # 安全地移除键
+                bbox.pop(key, None)  # Safely remove key
     #print(json.dumps(coref_results))
-    # 返回反应列表，使用 json.dumps 进行格式化
+    # Return reaction list, formatted with json.dumps
     return json.dumps(coref_results)
 
 
@@ -129,10 +129,10 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
 
 
     Args:
-        image_path (str): 图像文件路径。
+        image_path (str): image file path.
 
     Returns:
-        dict: 整理后的反应数据，包括反应物、产物和反应模板。
+        dict: organized reaction data, including reactants, products, and reaction templates.
     """
 
     client = AzureOpenAI(
@@ -141,14 +141,14 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
         azure_endpoint=AZURE_ENDPOINT
     )
 
-    # 加载图像并编码为 Base64
+    # Load image and encode as Base64
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-    # GPT 工具调用配置
+    # GPT tool-calling configuration
     tools = [
        {
         'type': 'function',
@@ -171,7 +171,7 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
       
     ]
 
-    # 提供给 GPT 的消息内容
+    # Message content provided to GPT
     with open('./prompt/prompt_getmolecular.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
     messages = [
@@ -185,7 +185,7 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
         }
     ]
 
-    # 调用 GPT 接口
+    # Call GPT API
     response = client.chat.completions.create(
     model = 'gpt-4o',
     temperature = 0,
@@ -209,16 +209,16 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
     ],
     tools = tools)
     
-# Step 1: 工具映射表
+# Step 1: Tool mapping table
     TOOL_MAP = {
         'get_multi_molecular_text_to_correct_withatoms': get_multi_molecular_text_to_correct_withatoms,
     }
 
-    # Step 2: 处理多个工具调用
+    # Step 2: Handle multiple tool calls
     tool_calls = response.choices[0].message.tool_calls
     results = []
 
-    # 遍历每个工具调用
+    # Iterate through each tool call
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
         tool_arguments = tool_call.function.arguments
@@ -227,15 +227,15 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
         tool_args = json.loads(tool_arguments)
         
         if tool_name in TOOL_MAP:
-            # 调用工具并获取结果
+            # Call tool and get result
             tool_result = TOOL_MAP[tool_name](image_path)
         else:
             raise ValueError(f"Unknown tool called: {tool_name}")
         
-        # 保存每个工具调用结果
+        # Save each tool-call result
         results.append({
             'role': 'tool',
-            'name': tool_name,  # Gemini API 要求必须包含 name 字段
+            'name': tool_name,  # Gemini API requires the name field
             'content': json.dumps({
                 'image_path': image_path,
                 f'{tool_name}':(tool_result),
@@ -279,16 +279,16 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
 
 
     
-    # 获取 GPT 生成的结果
+    # Get GPT-generated result
     gpt_output = [json.loads(response.choices[0].message.content)]
 
 
     def get_multi_molecular(image_path: str) -> list:
         '''Returns a list of reactions extracted from the image.'''
-        # 打开图像文件
+        # Open image file
         image = Image.open(image_path).convert('RGB')
         
-        # 将图像作为输入传递给模型
+        # Pass image as input to the model
         coref_results = model.extract_molecule_corefs_from_figures([image])
         return coref_results
 
@@ -298,8 +298,8 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
 
     def update_symbols_in_atoms(input1, input2):
         """
-        用 input1 中更新后的 'symbols' 替换 input2 中对应 bboxes 的 'symbols'，并同步更新 'atoms' 的 'atom_symbol'。
-        假设 input1 和 input2 的结构一致。
+        Replace corresponding bbox symbols in input2 with updated symbols from input1, and synchronously update atom_symbol in atoms.
+        Assume input1 and input2 have consistent structure.
         """
         for item1, item2 in zip(input1, input2):
             bboxes1 = item1.get('bboxes', [])
@@ -310,22 +310,22 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
                 continue
 
             for bbox1, bbox2 in zip(bboxes1, bboxes2):
-                # 更新 symbols
+                # Update symbols
                 if 'symbols' in bbox1:
-                    bbox2['symbols'] = bbox1['symbols']  # 更新 symbols
+                    bbox2['symbols'] = bbox1['symbols']  # Update symbols
                 
-                # 更新 atoms 的 atom_symbol
+                # Update atom_symbol in atoms
                 if 'symbols' in bbox1 and 'atoms' in bbox2:
                     symbols = bbox1['symbols']
                     atoms = bbox2.get('atoms', [])
                     
-                    # 确保 symbols 和 atoms 的长度一致
+                    # Ensure symbols and atoms have consistent lengths
                     if len(symbols) != len(atoms):
                         print(f"Warning: Mismatched symbols and atoms in bbox {bbox1.get('bbox')}!")
                         continue
 
                     for atom, symbol in zip(atoms, symbols):
-                        atom['atom_symbol'] = symbol  # 更新 atom_symbol
+                        atom['atom_symbol'] = symbol  # Update atom_symbol
 
         return input2
 
@@ -338,29 +338,29 @@ def process_reaction_image_with_multiple_products_and_text(image_path: str) -> d
 
     def update_smiles_and_molfile(input_data, conversion_function):
         """
-        使用更新后的 'symbols'、'coords' 和 'edges' 调用 `conversion_function` 生成新的 'smiles' 和 'molfile'，
-        并替换到原数据结构中。
+        Use updated symbols, coords, and edges to call `conversion_function` to generate new smiles and molfile,
+        and replace them in the original data structure.
         
-        参数:
-        - input_data: 包含 bboxes 的嵌套数据结构
-        - conversion_function: 函数，接受 'coords', 'symbols', 'edges' 并返回 (new_smiles, new_molfile, _)
+        Parameters:
+        - input_data: nested data structure containing bboxes
+        - conversion_function: function accepting coords, symbols, edges and returning (new_smiles, new_molfile, _)
         
-        返回:
-        - 更新后的数据结构
+        Returns:
+        - updated data structure
         """
         for item in input_data:
             for bbox in item.get('bboxes', []):
-                # 检查必需的键是否存在
+                # Check whether required keys exist
                 if all(key in bbox for key in ['coords', 'symbols', 'edges']):
                     coords = bbox['coords']
                     symbols = bbox['symbols']
                     edges = bbox['edges']
                     
-                    # 调用转换函数生成新的 'smiles' 和 'molfile'
+                    # Call conversion function to generate new smiles and molfile
                     new_smiles, new_molfile, _ = conversion_function(coords, symbols, edges)
                     #print(f"    Generated 'smiles': {new_smiles}")
             
-                    # 替换旧的 'smiles' 和 'molfile'
+                    # Replace old 'smiles' and 'molfile'
                     bbox['smiles'] = new_smiles
                     bbox['molfile'] = new_molfile
 
@@ -383,10 +383,10 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
 
 
     Args:
-        image_path (str): 图像文件路径。
+        image_path (str): image file path.
 
     Returns:
-        dict: 整理后的反应数据，包括反应物、产物和反应模板。
+        dict: organized reaction data, including reactants, products, and reaction templates.
     """
     client = AzureOpenAI(
         api_key=API_KEY,
@@ -394,14 +394,14 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
         azure_endpoint=AZURE_ENDPOINT
     )
 
-    # 加载图像并编码为 Base64
+    # Load image and encode as Base64
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-    # GPT 工具调用配置
+    # GPT tool-calling configuration
     tools = [
        {
         'type': 'function',
@@ -424,7 +424,7 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
       
     ]
 
-    # 提供给 GPT 的消息内容
+    # Message content provided to GPT
     with open('./prompt/prompt_getmolecular_correctR.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
     messages = [
@@ -438,7 +438,7 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
         }
     ]
 
-    # 调用 GPT 接口
+    # Call GPT API
     response = client.chat.completions.create(
     model = 'gpt-4o',
     temperature = 0,
@@ -462,16 +462,16 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
     ],
     tools = tools)
     
-# Step 1: 工具映射表
+# Step 1: Tool mapping table
     TOOL_MAP = {
         'get_multi_molecular_text_to_correct_withatoms': get_multi_molecular_text_to_correct_withatoms,
     }
 
-    # Step 2: 处理多个工具调用
+    # Step 2: Handle multiple tool calls
     tool_calls = response.choices[0].message.tool_calls
     results = []
 
-    # 遍历每个工具调用
+    # Iterate through each tool call
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
         tool_arguments = tool_call.function.arguments
@@ -480,15 +480,15 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
         tool_args = json.loads(tool_arguments)
         
         if tool_name in TOOL_MAP:
-            # 调用工具并获取结果
+            # Call tool and get result
             tool_result = TOOL_MAP[tool_name](image_path)
         else:
             raise ValueError(f"Unknown tool called: {tool_name}")
         
-        # 保存每个工具调用结果
+        # Save each tool-call result
         results.append({
             'role': 'tool',
-            'name': tool_name,  # Gemini API 要求必须包含 name 字段
+            'name': tool_name,  # Gemini API requires the name field
             'content': json.dumps({
                 'image_path': image_path,
                 f'{tool_name}':(tool_result),
@@ -532,17 +532,17 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
 
 
     
-    # 获取 GPT 生成的结果
+    # Get GPT-generated result
     gpt_output = [json.loads(response.choices[0].message.content)]
     print(f"gpt_output_mol:{gpt_output}")
 
 
     def get_multi_molecular(image_path: str) -> list:
         '''Returns a list of reactions extracted from the image.'''
-        # 打开图像文件
+        # Open image file
         image = Image.open(image_path).convert('RGB')
         
-        # 将图像作为输入传递给模型
+        # Pass image as input to the model
         coref_results = model.extract_molecule_corefs_from_figures([image])
         return coref_results
 
@@ -552,8 +552,8 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
 
     def update_symbols_in_atoms(input1, input2):
         """
-        用 input1 中更新后的 'symbols' 替换 input2 中对应 bboxes 的 'symbols'，并同步更新 'atoms' 的 'atom_symbol'。
-        假设 input1 和 input2 的结构一致。
+        Replace corresponding bbox symbols in input2 with updated symbols from input1, and synchronously update atom_symbol in atoms.
+        Assume input1 and input2 have consistent structure.
         """
         for item1, item2 in zip(input1, input2):
             bboxes1 = item1.get('bboxes', [])
@@ -564,22 +564,22 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
                 continue
 
             for bbox1, bbox2 in zip(bboxes1, bboxes2):
-                # 更新 symbols
+                # Update symbols
                 if 'symbols' in bbox1:
-                    bbox2['symbols'] = bbox1['symbols']  # 更新 symbols
+                    bbox2['symbols'] = bbox1['symbols']  # Update symbols
                 
-                # 更新 atoms 的 atom_symbol
+                # Update atom_symbol in atoms
                 if 'symbols' in bbox1 and 'atoms' in bbox2:
                     symbols = bbox1['symbols']
                     atoms = bbox2.get('atoms', [])
                     
-                    # 确保 symbols 和 atoms 的长度一致
+                    # Ensure symbols and atoms have consistent lengths
                     if len(symbols) != len(atoms):
                         print(f"Warning: Mismatched symbols and atoms in bbox {bbox1.get('bbox')}!")
                         continue
 
                     for atom, symbol in zip(atoms, symbols):
-                        atom['atom_symbol'] = symbol  # 更新 atom_symbol
+                        atom['atom_symbol'] = symbol  # Update atom_symbol
 
         return input2
 
@@ -592,29 +592,29 @@ def process_reaction_image_with_multiple_products_and_text_correctR(image_path: 
 
     def update_smiles_and_molfile(input_data, conversion_function):
         """
-        使用更新后的 'symbols'、'coords' 和 'edges' 调用 `conversion_function` 生成新的 'smiles' 和 'molfile'，
-        并替换到原数据结构中。
+        Use updated symbols, coords, and edges to call `conversion_function` to generate new smiles and molfile,
+        and replace them in the original data structure.
         
-        参数:
-        - input_data: 包含 bboxes 的嵌套数据结构
-        - conversion_function: 函数，接受 'coords', 'symbols', 'edges' 并返回 (new_smiles, new_molfile, _)
+        Parameters:
+        - input_data: nested data structure containing bboxes
+        - conversion_function: function accepting coords, symbols, edges and returning (new_smiles, new_molfile, _)
         
-        返回:
-        - 更新后的数据结构
+        Returns:
+        - updated data structure
         """
         for item in input_data:
             for bbox in item.get('bboxes', []):
-                # 检查必需的键是否存在
+                # Check whether required keys exist
                 if all(key in bbox for key in ['coords', 'symbols', 'edges']):
                     coords = bbox['coords']
                     symbols = bbox['symbols']
                     edges = bbox['edges']
                     
-                    # 调用转换函数生成新的 'smiles' 和 'molfile'
+                    # Call conversion function to generate new smiles and molfile
                     new_smiles, new_molfile, _ = conversion_function(coords, symbols, edges)
                     #print(f"    Generated 'smiles': {new_smiles}")
             
-                    # 替换旧的 'smiles' 和 'molfile'
+                    # Replace old 'smiles' and 'molfile'
                     bbox['smiles'] = new_smiles
                     bbox['molfile'] = new_molfile
 
@@ -632,10 +632,10 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
 
 
     Args:
-        image_path (str): 图像文件路径。
+        image_path (str): image file path.
 
     Returns:
-        dict: 整理后的反应数据，包括反应物、产物和反应模板。
+        dict: organized reaction data, including reactants, products, and reaction templates.
     """
     client = AzureOpenAI(
         api_key=API_KEY,
@@ -643,14 +643,14 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
         azure_endpoint=AZURE_ENDPOINT
     )
 
-    # 加载图像并编码为 Base64
+    # Load image and encode as Base64
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-    # GPT 工具调用配置
+    # GPT tool-calling configuration
     tools = [
        {
         'type': 'function',
@@ -673,7 +673,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
       
     ]
 
-    # 提供给 GPT 的消息内容
+    # Message content provided to GPT
     with open('./prompt/prompt_Mol_Reco.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
     messages = [
@@ -687,7 +687,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
         }
     ]
 
-    # 调用 GPT 接口
+    # Call GPT API
     response = client.chat.completions.create(
     model = 'gpt-5-mini',
     #temperature = 0,
@@ -711,16 +711,16 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
     ],
     tools = tools)
     
-# Step 1: 工具映射表
+# Step 1: Tool mapping table
     TOOL_MAP = {
         'get_multi_molecular_text_to_correct_withatoms': get_multi_molecular_text_to_correct_withatoms,
     }
 
-    # Step 2: 处理多个工具调用
+    # Step 2: Handle multiple tool calls
     tool_calls = response.choices[0].message.tool_calls
     results = []
 
-    # 遍历每个工具调用
+    # Iterate through each tool call
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
         tool_arguments = tool_call.function.arguments
@@ -729,15 +729,15 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
         tool_args = json.loads(tool_arguments)
         
         if tool_name in TOOL_MAP:
-            # 调用工具并获取结果
+            # Call tool and get result
             tool_result = TOOL_MAP[tool_name](image_path)
         else:
             raise ValueError(f"Unknown tool called: {tool_name}")
         
-        # 保存每个工具调用结果
+        # Save each tool-call result
         results.append({
             'role': 'tool',
-            'name': tool_name,  # Gemini API 要求必须包含 name 字段
+            'name': tool_name,  # Gemini API requires the name field
             'content': json.dumps({
                 'image_path': image_path,
                 f'{tool_name}':(tool_result),
@@ -781,17 +781,17 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
 
 
     
-    # 获取 GPT 生成的结果
+    # Get GPT-generated result
     gpt_output = [json.loads(response.choices[0].message.content)]
     print(f"gpt_output_mol:{gpt_output}")
 
 
     def get_multi_molecular(image_path: str) -> list:
         '''Returns a list of reactions extracted from the image.'''
-        # 打开图像文件
+        # Open image file
         image = Image.open(image_path).convert('RGB')
         
-        # 将图像作为输入传递给模型
+        # Pass image as input to the model
         coref_results = model.extract_molecule_corefs_from_figures([image])
         return coref_results
 
@@ -804,7 +804,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
         for item1, item2 in zip(gpt_outputs, coref_results):
             orig_bboxes = item2.get('bboxes', [])
             orig_corefs = item2.get('corefs', [])
-            # 1. 构造新的bboxes（严格用同bbox作为模板）
+            # 1. Construct new bboxes (strictly using the same bbox as template)
             coord2idx = {tuple(bb['bbox']): i for i, bb in enumerate(orig_bboxes)}
             new_bboxes = []
             for bb1 in item1.get('bboxes', []):
@@ -812,7 +812,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
                 if coord in coord2idx:
                     bb_template = orig_bboxes[coord2idx[coord]]
                 else:
-                    raise ValueError(f"扩展mol时未找到bbox {coord} 的原始模板！")
+                    raise ValueError(f"Original template for bbox {coord} not found when expanding mol!")
                 bb_new = copy.deepcopy(bb_template)
                 if 'symbols' in bb1:
                     bb_new['symbols'] = bb1['symbols']
@@ -826,24 +826,24 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
                 bb_new['bbox'] = bb1['bbox']
                 new_bboxes.append(bb_new)
             
-            # 2. 构建corefs（所有同类mol都和扩展后对应的label索引分组）
-            # 步骤：找出原组里mol的所有新索引，以及label的新索引，按原corefs分组生成新组
+            # 2. Build corefs (group all same-type mols with corresponding expanded label indices)
+            # Steps: find all new mol indices and new label index from the original group, then generate new groups by original corefs grouping
             coord2new_idxs = {}
             for idx, bb in enumerate(new_bboxes):
                 coord = tuple(bb['bbox'])
                 coord2new_idxs.setdefault(coord, []).append(idx)
             new_corefs = []
             for group in orig_corefs:
-                # 假设group = [mol_idx, idt_idx] 或 [mol_idx1, mol_idx2, ..., idt_idx]
+                # Assume group = [mol_idx, idt_idx] or [mol_idx1, mol_idx2, ..., idt_idx]
                 label_idx = group[-1]
                 label_coord = tuple(orig_bboxes[label_idx]['bbox'])
-                new_label_idx = coord2new_idxs[label_coord][-1]  # label只会有一个
-                # 所有mol的扩展后新索引
+                new_label_idx = coord2new_idxs[label_coord][-1]  # label has only one
+                # All expanded new indices of mols
                 for mol_idx in group[:-1]:
                     mol_coord = tuple(orig_bboxes[mol_idx]['bbox'])
                     for new_mol_idx in coord2new_idxs[mol_coord]:
                         new_corefs.append([new_mol_idx, new_label_idx])
-            # 3. 装配结构
+            # 3. Assemble structure
             new_item = copy.deepcopy(item2)
             new_item['bboxes'] = new_bboxes
             new_item['corefs'] = new_corefs
@@ -855,29 +855,29 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
 
     def update_smiles_and_molfile(input_data, conversion_function):
         """
-        使用更新后的 'symbols'、'coords' 和 'edges' 调用 `conversion_function` 生成新的 'smiles' 和 'molfile'，
-        并替换到原数据结构中。
+        Use updated symbols, coords, and edges to call `conversion_function` to generate new smiles and molfile,
+        and replace them in the original data structure.
         
-        参数:
-        - input_data: 包含 bboxes 的嵌套数据结构
-        - conversion_function: 函数，接受 'coords', 'symbols', 'edges' 并返回 (new_smiles, new_molfile, _)
+        Parameters:
+        - input_data: nested data structure containing bboxes
+        - conversion_function: function accepting coords, symbols, edges and returning (new_smiles, new_molfile, _)
         
-        返回:
-        - 更新后的数据结构
+        Returns:
+        - updated data structure
         """
         for item in input_data:
             for bbox in item.get('bboxes', []):
-                # 检查必需的键是否存在
+                # Check whether required keys exist
                 if all(key in bbox for key in ['coords', 'symbols', 'edges']):
                     coords = bbox['coords']
                     symbols = bbox['symbols']
                     edges = bbox['edges']
                     
-                    # 调用转换函数生成新的 'smiles' 和 'molfile'
+                    # Call conversion function to generate new smiles and molfile
                     new_smiles, new_molfile, _ = conversion_function(coords, symbols, edges)
                     #print(f"    Generated 'smiles': {new_smiles}")
             
-                    # 替换旧的 'smiles' 和 'molfile'
+                    # Replace old 'smiles' and 'molfile'
                     bbox['smiles'] = new_smiles
                     bbox['molfile'] = new_molfile
 
@@ -897,16 +897,16 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
     api_key: Optional[str] = None,
 ) -> dict:
     """
-    与 process_reaction_image_with_multiple_products_and_text_correctmultiR 流程保持一致，但改用兼容 OpenAI Chat Completions 协议的本地/自建模型（如 vLLM 或 Ollama）。
+    Aligned with process_reaction_image_with_multiple_products_and_text_correctmultiR workflow, but uses a local/self-hosted model compatible with OpenAI Chat Completions protocol (such as vLLM or Ollama).
 
     Args:
-        image_path: 图像文件路径。
-        model_name: 本地模型名称（默认 `qwen3-vl:32b`）。
-        base_url: OpenAI 兼容接口地址，若为 None 则使用 `http://localhost:8000/v1` (vLLM 默认端口)。
-        api_key: 接口密钥，可为任意非空字符串（vLLM 默认可填 `"EMPTY"`）。
+        image_path: image file path.
+        model_name: local model name (default `qwen3-vl:32b`).
+        base_url: OpenAI-compatible API endpoint; if None, use `http://localhost:8000/v1` (vLLM default port).
+        api_key: API key, can be any non-empty string (vLLM default can be `"EMPTY"`).
 
     Returns:
-        dict: 整理后的反应数据，包括反应物、产物和反应模板。
+        dict: organized reaction data, including reactants, products, and reaction templates.
     """
     base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
     api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
@@ -916,14 +916,14 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         api_key=api_key,
     )
 
-    # 加载图像并编码为 Base64
+    # Load image and encode as Base64
     def encode_image(image_path: str):
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     base64_image = encode_image(image_path)
 
-    # GPT 工具调用配置
+    # GPT tool-calling configuration
     tools = [
         {
             'type': 'function',
@@ -945,7 +945,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         },
     ]
 
-    # 提供给 GPT 的消息内容
+    # Message content provided to GPT
     with open('./prompt/prompt_Mol_Reco.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
     messages = [
@@ -959,7 +959,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         }
     ]
 
-    # 调用 GPT 接口（带重试机制）
+    # Call GPT API (with retry mechanism)
     response = retry_api_call(
         client.chat.completions.create,
         max_retries=5,
@@ -967,22 +967,22 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         backoff_factor=2,
         model=model_name,
         temperature=0,
-        #response_format={'type': 'json_object'},  # vLLM 不支持同时使用 response_format 和 tools
+        #response_format={'type': 'json_object'},  # vLLM does not support using response_format and tools simultaneously
         messages=messages,
         tools=tools,
         tool_choice="auto",
     )
     
-    # Step 1: 工具映射表
+    # Step 1: Tool mapping table
     TOOL_MAP = {
         'get_multi_molecular_text_to_correct_withatoms': get_multi_molecular_text_to_correct_withatoms,
     }
 
-    # Step 2: 处理多个工具调用
+    # Step 2: Handle multiple tool calls
     tool_calls = response.choices[0].message.tool_calls or []
     results = []
 
-    # 遍历每个工具调用
+    # Iterate through each tool call
     for tool_call in tool_calls:
         tool_name = tool_call.function.name
         tool_arguments = tool_call.function.arguments
@@ -991,15 +991,15 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         tool_args = json.loads(tool_arguments)
         
         if tool_name in TOOL_MAP:
-            # 调用工具并获取结果
+            # Call tool and get result
             tool_result = TOOL_MAP[tool_name](image_path)
         else:
             raise ValueError(f"Unknown tool called: {tool_name}")
         
-        # 保存每个工具调用结果
+        # Save each tool-call result
         results.append({
             'role': 'tool',
-            'name': tool_name,  # Gemini API 要求必须包含 name 字段
+            'name': tool_name,  # Gemini API requires the name field
             'content': json.dumps({
                 'image_path': image_path,
                 f'{tool_name}':(tool_result),
@@ -1032,7 +1032,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
             ],
     }
 
-    # Generate new response（带重试机制）
+    # Generate new response (with retry mechanism)
     response = retry_api_call(
         client.chat.completions.create,
         max_retries=5,
@@ -1040,21 +1040,21 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         backoff_factor=2,
         model=completion_payload["model"],
         messages=completion_payload["messages"],
-        #response_format={'type': 'json_object'},  # vLLM 可能不支持
+        #response_format={'type': 'json_object'},  # vLLM may not support this
         temperature=0
     )
 
-    # 获取 GPT 生成的结果（支持从包含思考过程的文本中提取）
+    # Get GPT-generated result (supports extraction from text containing reasoning)
     from get_R_group_sub_agent import extract_json_from_text_with_reasoning
     
     raw_content = response.choices[0].message.content
     
     try:
-        # 首先尝试直接解析
+        # First try direct parsing
         gpt_output = [json.loads(raw_content)]
         print(f"DEBUG [OS]: Successfully parsed JSON directly")
     except json.JSONDecodeError:
-        # 如果直接解析失败，使用智能提取函数
+        # If direct parsing fails, use intelligent extraction function
         print(f"WARNING [OS]: Direct JSON parsing failed, trying to extract JSON from text...")
         parsed_json = extract_json_from_text_with_reasoning(raw_content)
         
@@ -1073,10 +1073,10 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
 
     def get_multi_molecular(image_path: str) -> list:
         '''Returns a list of reactions extracted from the image.'''
-        # 打开图像文件
+        # Open image file
         image = Image.open(image_path).convert('RGB')
         
-        # 将图像作为输入传递给模型
+        # Pass image as input to the model
         coref_results = model.extract_molecule_corefs_from_figures([image])
         return coref_results
 
@@ -1087,7 +1087,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         for item1, item2 in zip(gpt_outputs, coref_results):
             orig_bboxes = item2.get('bboxes', [])
             orig_corefs = item2.get('corefs', [])
-            # 1. 构造新的bboxes（严格用同bbox作为模板）
+            # 1. Construct new bboxes (strictly using the same bbox as template)
             coord2idx = {tuple(bb['bbox']): i for i, bb in enumerate(orig_bboxes)}
             new_bboxes = []
             for bb1 in item1.get('bboxes', []):
@@ -1095,7 +1095,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
                 if coord in coord2idx:
                     bb_template = orig_bboxes[coord2idx[coord]]
                 else:
-                    raise ValueError(f"扩展mol时未找到bbox {coord} 的原始模板！")
+                    raise ValueError(f"Original template for bbox {coord} not found when expanding mol!")
                 bb_new = copy.deepcopy(bb_template)
                 if 'symbols' in bb1:
                     bb_new['symbols'] = bb1['symbols']
@@ -1109,24 +1109,24 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
                 bb_new['bbox'] = bb1['bbox']
                 new_bboxes.append(bb_new)
             
-            # 2. 构建corefs（所有同类mol都和扩展后对应的label索引分组）
-            # 步骤：找出原组里mol的所有新索引，以及label的新索引，按原corefs分组生成新组
+            # 2. Build corefs (group all same-type mols with corresponding expanded label indices)
+            # Steps: find all new mol indices and new label index from the original group, then generate new groups by original corefs grouping
             coord2new_idxs = {}
             for idx, bb in enumerate(new_bboxes):
                 coord = tuple(bb['bbox'])
                 coord2new_idxs.setdefault(coord, []).append(idx)
             new_corefs = []
             for group in orig_corefs:
-                # 假设group = [mol_idx, idt_idx] 或 [mol_idx1, mol_idx2, ..., idt_idx]
+                # Assume group = [mol_idx, idt_idx] or [mol_idx1, mol_idx2, ..., idt_idx]
                 label_idx = group[-1]
                 label_coord = tuple(orig_bboxes[label_idx]['bbox'])
-                new_label_idx = coord2new_idxs[label_coord][-1]  # label只会有一个
-                # 所有mol的扩展后新索引
+                new_label_idx = coord2new_idxs[label_coord][-1]  # label has only one
+                # All expanded new indices of mols
                 for mol_idx in group[:-1]:
                     mol_coord = tuple(orig_bboxes[mol_idx]['bbox'])
                     for new_mol_idx in coord2new_idxs[mol_coord]:
                         new_corefs.append([new_mol_idx, new_label_idx])
-            # 3. 装配结构
+            # 3. Assemble structure
             new_item = copy.deepcopy(item2)
             new_item['bboxes'] = new_bboxes
             new_item['corefs'] = new_corefs
@@ -1137,28 +1137,28 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
 
     def update_smiles_and_molfile(input_data, conversion_function):
         """
-        使用更新后的 'symbols'、'coords' 和 'edges' 调用 `conversion_function` 生成新的 'smiles' 和 'molfile'，
-        并替换到原数据结构中。
+        Use updated symbols, coords, and edges to call `conversion_function` to generate new smiles and molfile,
+        and replace them in the original data structure.
         
-        参数:
-        - input_data: 包含 bboxes 的嵌套数据结构
-        - conversion_function: 函数，接受 'coords', 'symbols', 'edges' 并返回 (new_smiles, new_molfile, _)
+        Parameters:
+        - input_data: nested data structure containing bboxes
+        - conversion_function: function accepting coords, symbols, edges and returning (new_smiles, new_molfile, _)
         
-        返回:
-        - 更新后的数据结构
+        Returns:
+        - updated data structure
         """
         for item in input_data:
             for bbox in item.get('bboxes', []):
-                # 检查必需的键是否存在
+                # Check whether required keys exist
                 if all(key in bbox for key in ['coords', 'symbols', 'edges']):
                     coords = bbox['coords']
                     symbols = bbox['symbols']
                     edges = bbox['edges']
                     
-                    # 调用转换函数生成新的 'smiles' 和 'molfile'
+                    # Call conversion function to generate new smiles and molfile
                     new_smiles, new_molfile, _ = conversion_function(coords, symbols, edges)
             
-                    # 替换旧的 'smiles' 和 'molfile'
+                    # Replace old 'smiles' and 'molfile'
                     bbox['smiles'] = new_smiles
                     bbox['molfile'] = new_molfile
 
@@ -1168,4 +1168,3 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
     print(f"mol_agent_output:{updated_data}")
 
     return updated_data
-

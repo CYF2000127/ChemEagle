@@ -184,20 +184,20 @@ def action_observer_agent(image_path: str, tool_result: Any) -> dict:
 
 def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, **kwargs):
     """
-    通用的 API 调用重试函数，支持指数退避策略。
+    Generic API call retry function with exponential backoff support.
     
     Args:
-        func: 要调用的函数
-        max_retries: 最大重试次数
-        base_delay: 基础延迟时间（秒）
-        backoff_factor: 退避因子（每次重试延迟时间 = base_delay * backoff_factor^attempt）
-        *args, **kwargs: 传递给 func 的参数
+        func: function to call
+        max_retries: maximum number of retries
+        base_delay: base delay time (seconds)
+        backoff_factor: backoff factor (retry delay = base_delay * backoff_factor^attempt)
+        *args, **kwargs: parameters passed to func
     
     Returns:
-        func 的返回值
+        return value of func
     
     Raises:
-        最后一次尝试的异常
+        exception from the final attempt
     """
     last_exception = None
     
@@ -209,27 +209,27 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
             error_code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
             error_message = str(e)
             
-            # 检查是否是 503 错误或其他可重试的错误
+            # Check whether this is a 503 error or another retryable error
             if error_code == 503 or 'overloaded' in error_message.lower() or '503' in error_message:
                 if attempt < max_retries - 1:
                     delay = base_delay * (backoff_factor ** attempt)
-                    print(f"⚠️ API 调用失败 (503/过载)，第 {attempt + 1}/{max_retries} 次尝试。{delay:.1f} 秒后重试...")
+                    print(f"⚠️ API call failed (503/overloaded), attempt {attempt + 1}/{max_retries}. Retrying in {delay:.1f} seconds...")
                     time.sleep(delay)
                     continue
                 else:
-                    print(f"❌ API 调用失败，已达到最大重试次数 ({max_retries})")
+                    print(f"❌ API call failed, reached maximum retries ({max_retries})")
                     raise
             else:
-                # 其他类型的错误，直接抛出
+                # Other error types, raise directly
                 raise
         except Exception as e:
-            # 其他未知错误，直接抛出
+            # Other unknown errors, raise directly
             raise
     
-    # 如果所有重试都失败了
+    # If all retries failed
     if last_exception:
         raise last_exception
-    raise RuntimeError("API 调用失败，未知错误")
+    raise RuntimeError("API call failed, unknown error")
 
 
 def plan_observer_agent_OS(
@@ -241,7 +241,7 @@ def plan_observer_agent_OS(
     api_key: Optional[str] = None,
 ) -> dict:
     """
-    OS 版本的 plan_observer_agent，使用兼容 OpenAI Chat Completions 协议的本地/自建模型。
+    OS version of plan_observer_agent, using a local/self-hosted model compatible with the OpenAI Chat Completions protocol.
 
     Returns:
         dict: {"list_of_agents": list, "redo": bool, "reason": str}
@@ -292,7 +292,7 @@ def plan_observer_agent_OS(
                 if parsed is None:
                     raise ValueError("Failed to extract JSON from response")
             except (ImportError, ValueError):
-                print(f"⚠️ 警告: plan_observer_agent_OS 无法解析 JSON，返回原始计划")
+                print(f"⚠️ Warning: plan_observer_agent_OS could not parse JSON, returning the original plan")
                 return default
         
         return {
@@ -301,7 +301,7 @@ def plan_observer_agent_OS(
             "reason": parsed.get("reason", ""),
         }
     except Exception as e:
-        print(f"⚠️ 警告: plan_observer_agent_OS 出错: {e}，返回原始计划")
+        print(f"⚠️ Warning: plan_observer_agent_OS error: {e}, returning the original plan")
         return default
 
 
@@ -314,7 +314,7 @@ def action_observer_agent_OS(
     api_key: Optional[str] = None,
 ) -> dict:
     """
-    OS 版本的 action_observer_agent，使用兼容 OpenAI Chat Completions 协议的本地/自建模型。
+    OS version of action_observer_agent, using a local/self-hosted model compatible with the OpenAI Chat Completions protocol.
 
     Returns:
         dict: {"redo": bool, "reason": str, "list_of_agents": list}
@@ -365,7 +365,7 @@ def action_observer_agent_OS(
                 if parsed is None:
                     raise ValueError("Failed to extract JSON from response")
             except (ImportError, ValueError):
-                print(f"⚠️ 警告: action_observer_agent_OS 无法解析 JSON，返回不重做")
+                print(f"⚠️ Warning: action_observer_agent_OS could not parse JSON, returning no redo")
                 return default
         
         return {
@@ -374,5 +374,5 @@ def action_observer_agent_OS(
             "list_of_agents": parsed.get("list_of_agents", []),
         }
     except Exception as e:
-        print(f"⚠️ 警告: action_observer_agent_OS 出错: {e}，返回不重做")
+        print(f"⚠️ Warning: action_observer_agent_OS error: {e}, returning no redo")
         return default
