@@ -230,6 +230,11 @@ Benchmark datasets, predictions, and ground truth can be found in our [Huggingfa
 
 ## 🤗 Chemical information extraction using [ChemEAGLE.Web](https://app.chemeagle.net/) 
 
+[comment]: <> ()
+![visualization](examples/webapp.png)
+<div align="center"> The interface of ChemEAGLE.Web. </div>
+  
+
 Go to our [ChemEAGLE.Web app demo](https://app.chemeagle.net/) to directly use our tool online for both image and PDF input! Feel free to provide us with any feedback, too! (Note: The demo runs on the HPC4.ust.hk server with a maximum uptime of 3 days; it is restarted for maintenance every three days, please wait a moment if the site is temporarily unavailable.)
 
 When the input is a multimodal chemical reaction graphic:
