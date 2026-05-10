@@ -17,10 +17,12 @@ from get_observer import action_observer_agent, plan_observer_agent,action_obser
 from get_text_agent import text_extraction_agent, text_extraction_agent_OS
 from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _select_main_area, _has_text_extraction
 
-model = ChemIEToolkit(device=torch.device('cpu')) 
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = ChemIEToolkit(device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')) 
 ckpt_path = "./rxn.ckpt"
-model1 = RxnIM(ckpt_path, device=torch.device('cpu'))
-device = torch.device('cpu')
+model1 = RxnIM(ckpt_path, device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+
 
 API_KEY = os.getenv("API_KEY")
 if not API_KEY:
