@@ -799,7 +799,10 @@ def get_reaction_withatoms_correctR_OS(
 
     return updated_data
 
-
+def _get_extra_body(model_name: str) -> dict:
+    if "Qwen3.5" in model_name or "qwen3.5" in model_name:
+        return {"chat_template_kwargs": {"enable_thinking": False}, "repetition_penalty": 1.05}
+    return {}
 
 def _tesseract_ocr_image(image_path: str) -> str:
     import pytesseract
@@ -951,7 +954,7 @@ def get_reaction_con(image_path: str) -> dict:
 def get_reaction_con_OS(
     image_path: str,
     *,
-    model_name: str = DEFAULT_MODEL,
+    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
