@@ -798,3 +798,309 @@ def get_reaction_withatoms_correctR_OS(
     print(f"rxn_agent_output:{updated_data}")
 
     return updated_data
+
+
+
+def _tesseract_ocr_image(image_path: str) -> str:
+    import pytesseract
+    img = Image.open(image_path)
+    raw_text = pytesseract.image_to_string(img)
+    return raw_text
+
+
+def get_reaction_c(image_path: str) -> dict:
+    raw_prediction = model1.predict_image_file(image_path, molscribe=True, ocr=True)
+    conditions_per_reaction = []
+    for reaction in raw_prediction:
+        conds = reaction.get('conditions', [])
+        cleaned = []
+        for item in conds:
+            cleaned.append({
+                'text': item.get('text', ''),
+                'category': item.get('category', ''),
+                'bbox': item.get('bbox', []),
+            })
+        conditions_per_reaction.append(cleaned)
+    return {'conditions': conditions_per_reaction}
+
+
+def get_reaction_con(image_path: str) -> dict:
+    client = AzureOpenAI(
+        api_key=API_KEY,
+        api_version=API_VERSION,
+        azure_endpoint=AZURE_ENDPOINT,
+    )
+
+    def encode_image(p: str):
+        with open(p, "rb") as f:
+            return base64.b64encode(f.read()).decode('utf-8')
+
+    base64_image = encode_image(image_path)
+
+    tools = [
+        {
+            'type': 'function',
+            'function': {
+                'name': 'TesseractOCR',
+                'description': 'Run Tesseract OCR on the reaction image and return the extracted raw text (including all condition texts).',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'image_path': {
+                            'type': 'string',
+                            'description': 'The path to the reaction image.',
+                        },
+                    },
+                    'required': ['image_path'],
+                    'additionalProperties': False,
+                },
+            },
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'get_reaction_c',
+                'description': 'RxnConInterpreter: extract and initially classify reaction condition texts (reagent/solvent/temperature/yield/etc.) from the reaction image.',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'image_path': {
+                            'type': 'string',
+                            'description': 'The path to the reaction image.',
+                        },
+                    },
+                    'required': ['image_path'],
+                    'additionalProperties': False,
+                },
+            },
+        },
+    ]
+
+    with open('./prompt/prompt_con.txt', 'r', encoding='utf-8') as prompt_file:
+        prompt = prompt_file.read()
+
+    messages = [
+        {'role': 'system', 'content': 'You are a helpful assistant.'},
+        {
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': prompt},
+                {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{base64_image}'}},
+            ],
+        },
+    ]
+
+    response = client.chat.completions.create(
+        model='gpt-5-mini',
+        response_format={'type': 'json_object'},
+        messages=messages,
+        tools=tools,
+    )
+
+    TOOL_MAP = {
+        'TesseractOCR': _tesseract_ocr_image,
+        'get_reaction_c': get_reaction_c,
+    }
+
+    tool_calls = response.choices[0].message.tool_calls or []
+    results = []
+    for tool_call in tool_calls:
+        tool_name = tool_call.function.name
+        tool_call_id = tool_call.id
+        if tool_name in TOOL_MAP:
+            tool_result = TOOL_MAP[tool_name](image_path)
+        else:
+            raise ValueError(f"Unknown tool called: {tool_name}")
+        results.append({
+            'role': 'tool',
+            'name': tool_name,
+            'content': json.dumps({
+                'image_path': image_path,
+                f'{tool_name}': tool_result,
+            }),
+            'tool_call_id': tool_call_id,
+        })
+
+    completion_payload = {
+        'model': 'gpt-5-mini',
+        'messages': [
+            {'role': 'system', 'content': 'You are a helpful assistant.'},
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'text', 'text': prompt},
+                    {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{base64_image}'}},
+                ],
+            },
+            response.choices[0].message,
+            *results,
+        ],
+    }
+
+    response = client.chat.completions.create(
+        model=completion_payload['model'],
+        messages=completion_payload['messages'],
+        response_format={'type': 'json_object'},
+    )
+
+    gpt_output = json.loads(response.choices[0].message.content)
+    print(f"gpt_output_con:{gpt_output}")
+    return gpt_output
+
+
+def get_reaction_con_OS(
+    image_path: str,
+    *,
+    model_name: str = DEFAULT_MODEL,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> dict:
+    base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
+    api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
+
+    client = OpenAI(base_url=base_url, api_key=api_key)
+
+    def encode_image(p: str):
+        with open(p, "rb") as f:
+            return base64.b64encode(f.read()).decode('utf-8')
+
+    base64_image = encode_image(image_path)
+
+    tools = [
+        {
+            'type': 'function',
+            'function': {
+                'name': 'TesseractOCR',
+                'description': 'Run Tesseract OCR on the reaction image and return the extracted raw text (including all condition texts).',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'image_path': {
+                            'type': 'string',
+                            'description': 'The path to the reaction image.',
+                        },
+                    },
+                    'required': ['image_path'],
+                    'additionalProperties': False,
+                },
+            },
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'get_reaction_c',
+                'description': 'RxnConInterpreter: extract and initially classify reaction condition texts (reagent/solvent/temperature/yield/etc.) from the reaction image.',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'image_path': {
+                            'type': 'string',
+                            'description': 'The path to the reaction image.',
+                        },
+                    },
+                    'required': ['image_path'],
+                    'additionalProperties': False,
+                },
+            },
+        },
+    ]
+
+    with open('./prompt/prompt_con.txt', 'r', encoding='utf-8') as prompt_file:
+        prompt = prompt_file.read()
+
+    messages = [
+        {'role': 'system', 'content': 'You are a helpful assistant.'},
+        {
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': prompt},
+                {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{base64_image}'}},
+            ],
+        },
+    ]
+
+    response = retry_api_call(
+        client.chat.completions.create,
+        max_retries=5,
+        base_delay=3,
+        backoff_factor=2,
+        model=model_name,
+        temperature=0,
+        messages=messages,
+        tools=tools,
+        tool_choice="auto",
+        extra_body=_get_extra_body(model_name),
+    )
+
+    TOOL_MAP = {
+        'TesseractOCR': _tesseract_ocr_image,
+        'get_reaction_c': get_reaction_c,
+    }
+
+    tool_calls = response.choices[0].message.tool_calls or []
+    results = []
+    for tool_call in tool_calls:
+        tool_name = tool_call.function.name
+        tool_call_id = tool_call.id
+        if tool_name in TOOL_MAP:
+            tool_result = TOOL_MAP[tool_name](image_path)
+        else:
+            raise ValueError(f"Unknown tool called: {tool_name}")
+        results.append({
+            'role': 'tool',
+            'name': tool_name,
+            'content': json.dumps({
+                'image_path': image_path,
+                f'{tool_name}': tool_result,
+            }),
+            'tool_call_id': tool_call_id,
+        })
+
+    completion_payload = {
+        'model': model_name,
+        'messages': [
+            {'role': 'system', 'content': 'You are a helpful assistant.'},
+            {
+                'role': 'user',
+                'content': [
+                    {'type': 'text', 'text': prompt},
+                    {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{base64_image}'}},
+                ],
+            },
+            response.choices[0].message,
+            *results,
+        ],
+    }
+
+    response = retry_api_call(
+        client.chat.completions.create,
+        max_retries=5,
+        base_delay=3,
+        backoff_factor=2,
+        model=completion_payload['model'],
+        messages=completion_payload['messages'],
+        temperature=0,
+        extra_body=_get_extra_body(model_name),
+    )
+
+    from get_R_group_sub_agent import extract_json_from_text_with_reasoning
+
+    raw_content = response.choices[0].message.content
+    try:
+        gpt_output = json.loads(raw_content)
+        print(f"DEBUG [con OS]: Successfully parsed JSON directly")
+    except json.JSONDecodeError:
+        print(f"WARNING [con OS]: Direct JSON parsing failed, trying to extract JSON from text...")
+        gpt_output = extract_json_from_text_with_reasoning(raw_content)
+        if gpt_output is not None:
+            print(f"DEBUG [con OS]: Successfully extracted JSON from text (with reasoning support)")
+        else:
+            print(f"ERROR [con OS]: Failed to parse JSON from model response")
+            print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
+            raise json.JSONDecodeError(
+                "Could not parse JSON from model response. Content may not be valid JSON.",
+                raw_content, 0,
+            )
+
+    print(f"gpt_output_con:{gpt_output}")
+    return gpt_output
