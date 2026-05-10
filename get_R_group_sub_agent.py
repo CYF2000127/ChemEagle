@@ -12,11 +12,6 @@ import sys
 from rxnim import RxnIM
 import json
 import base64
-model = ChemIEToolkit(device=torch.device('cpu')) 
-ckpt_path = "./rxn.ckpt"
-model1 = RxnIM(ckpt_path, device=torch.device('cpu'))
-device = torch.device('cpu')
-import base64
 import torch
 import json
 from PIL import Image
@@ -32,6 +27,11 @@ import time
 from openai import InternalServerError, RateLimitError, APIError
 
 
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = ChemIEToolkit(device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')) 
+ckpt_path = "./rxn.ckpt"
+model1 = RxnIM(ckpt_path, device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 
 
 API_KEY = os.getenv("API_KEY")
