@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 import json
 from get_molecular_agent import process_reaction_image_with_multiple_products_and_text_correctR, process_reaction_image_with_multiple_products_and_text_correctmultiR, process_reaction_image_with_multiple_products_and_text_correctmultiR_OS
-from get_reaction_agent import get_reaction_withatoms_correctR, get_reaction_withatoms_correctR_OS
+from get_reaction_agent import get_reaction_withatoms_correctR, get_reaction_withatoms_correctR_OS, get_reaction_con, get_reaction_con_OS
 import sys
 from rxnim import RxnIM
 import json
@@ -1096,6 +1096,24 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
             },
         },
             },
+                {
+        'type': 'function',
+        'function': {
+            'name': 'get_reaction_con',
+            'description': 'Get a list of reaction conditions from a reaction image',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'image_path': {
+                        'type': 'string',
+                        'description': 'The path to the reaction image.',
+                    },
+                },
+                'required': ['image_path'],
+                'additionalProperties': False,
+            },
+        },
+            }
     ]
 
     # Message content provided to GPT
@@ -1139,7 +1157,8 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
 # Step 1: Tool mapping table
     TOOL_MAP = {
         'get_multi_molecular_text_to_correct': get_multi_molecular_text_to_correct,
-        'get_reaction': get_reaction
+        'get_reaction': get_reaction,
+        'get_reaction_con': get_reaction_con
     }
 
     # Step 2: Handle multiple tool calls
@@ -1382,6 +1401,24 @@ def process_reaction_image_with_product_variant_R_group_OS(
             },
         },
             },
+            {
+        'type': 'function',
+        'function': {
+            'name': 'get_reaction_con_OS',
+            'description': 'Get a list of reaction conditions from a reaction image',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'image_path': {
+                        'type': 'string',
+                        'description': 'The path to the reaction image.',
+                    },
+                },
+                'required': ['image_path'],
+                'additionalProperties': False,
+            },
+        },
+            }
     ]
 
     # Message content provided to GPT
@@ -1415,7 +1452,8 @@ def process_reaction_image_with_product_variant_R_group_OS(
     # Step 1: Tool mapping table
     TOOL_MAP = {
         'get_multi_molecular_text_to_correct_OS': get_multi_molecular_text_to_correct_OS,
-        'get_reaction_OS': get_reaction_OS
+        'get_reaction_OS': get_reaction_OS,
+        'get_reaction_con_OS':get_reaction_con_OS
     }
 
     # Step 2: Handle multiple tool calls
