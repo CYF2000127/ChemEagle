@@ -1,4 +1,11 @@
-# ChemEAGLE
+<div align="center">
+  <img src="examples/chemeagle_logo.png" width="250" alt="ChemEAGLE Logo">
+  <h1>ChemEAGLE</h1>
+</div>
+
+<p align="center">
+  <strong>A Multi-Agent System Enables Versatile Information Extraction from the Chemical Literature</strong>
+</p>
 
 
 ![visualization](examples/chemagle_overview_v10.png)
