@@ -42,8 +42,17 @@ olborane"},{"role":"reagent","text":"K2CO3","smiles":"SMILES of K2CO3"},{"role":
 "text_extraction":["......"]
 }
 
-For single or multiple molecular image, your output should be in the JSON format:
-
+For single molecular or multiple molecular images, your output should be in the JSON format:
+  {
+    "molecules": [
+        {
+            "smiles": "....","label": "....", "bbox": 
+        },
+        {
+            "smiles": "....","label": "....","bbox": 
+        },
+        ]
+}
 
 
 
