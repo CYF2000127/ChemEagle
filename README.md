@@ -268,7 +268,7 @@ hard-code it:
 export CHEMEAGLE_API_KEY="ce_xxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
-#### Extraction
+#### Example Usage
 
 ```python
 from chemeagle_client import ChemEagleClient
