@@ -235,7 +235,7 @@ Benchmark datasets, predictions, and ground truth can be found in our [Huggingfa
 ## 🤗 Chemical information extraction using [ChemEAGLE.Web](https://app.chemeagle.net/) 
 
 [comment]: <> ()
-![visualization](examples/webapp.png)
+![visualization](examples/webapp2.png)
 <div align="center"> The interface of ChemEAGLE.Web. </div>
   
 
