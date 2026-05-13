@@ -252,9 +252,9 @@ way to use it is the **Python SDK** (1 file, only depends on `requests`).
 
 ```bash
 # Option A: pip install from the api/sdk subfolder of this repo
-pip install -e api/sdk
+pip install -e sdk
 
-# Option B: zero-install — just copy api/sdk/chemeagle_client/client.py
+# Option B: zero-install — just copy sdk/chemeagle_client/client.py
 #          into your project (only depends on `requests`).
 ```
 
