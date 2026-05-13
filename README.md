@@ -241,6 +241,69 @@ Benchmark datasets, predictions, and ground truth can be found in our [Huggingfa
 
 Go to our [ChemEAGLE.Web app demo](https://app.chemeagle.net/) to directly use our tool online for both image and PDF input! The built-in Ketcher editor on the right lets you instantly visualize, verify, and fine-tune any extracted molecular structure before exporting. Feel free to provide us with any feedback too! (Note: The demo runs on the HPC4.ust.hk server with a maximum uptime of 3 days; it is restarted for maintenance every three days, please wait a moment if the site is temporarily unavailable.)
 
+## 🐍 Programmatic access: ChemEAGLE API & Python SDK
+
+Don't want to install anything? The same engine that powers
+[`app.chemeagle.net`](https://app.chemeagle.net/) is also exposed as an
+authenticated JSON API at `https://app.chemeagle.net/api/v1`. The easiest
+way to use it is the **Python SDK** (1 file, only depends on `requests`).
+
+### Install
+
+```bash
+# Option A: pip install from the api/sdk subfolder of this repo
+pip install -e api/sdk
+
+# Option B: zero-install — just copy api/sdk/chemeagle_client/client.py
+#          into your project (only depends on `requests`).
+```
+
+### Get an API key
+
+Ask the maintainers (or open a GitHub issue) for a key. Keys look like
+`ce_xxxxxxxxxxxxxxxxxxxxxxx`. Set it via env var so you don't have to
+hard-code it:
+
+```bash
+export CHEMEAGLE_API_KEY="ce_xxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+### Extraction
+
+```python
+from chemeagle_client import ChemEagleClient
+
+client = ChemEagleClient(base_url="https://app.chemeagle.net")  # picks up env key
+
+# 1) Single image (synchronous — easiest)
+result = client.process_image("examples/1.png", sync=True)
+for rxn in result.get("reactions", []):
+    print(rxn["id"], "→", rxn["smiles"])
+
+# 2) PDF (asynchronous — recommended, PDFs take minutes)
+task_id = client.process_pdf("paper.pdf")["task_id"]
+final = client.wait_for_task(task_id, poll=3.0, max_wait=1800)
+for img in final["results"]:
+    print(img["image_name"], len(img.get("reactions", [])), "reactions")
+
+# 3) From a public URL (server downloads on your behalf)
+client.process_url("https://example.org/paper.pdf", kind="pdf", sync=False)
+```
+
+Errors raise `ChemEagleError` with a stable `error_code` (`rate_limited`,
+`invalid_api_key`, `payload_too_large`, …) — easy to handle and retry.
+
+### Full reference
+
+- 📖 **Live docs**: <https://app.chemeagle.net/api/v1/docs>
+  (rendered from [`api/docs/api.md`](api/docs/api.md))
+- 🛠️ **SDK README**: [`api/sdk/README.md`](api/sdk/README.md)
+- 🔧 **Server setup** (if you want to self-host the API): [`api/README.md`](api/README.md)
+
+> **Prefer raw HTTP / `curl`?** Every SDK method is a thin wrapper over a
+> single endpoint — see the HTTP reference in the live docs.
+
+
 When the input is a multimodal chemical reaction graphic:
 ![visualization](examples/reaction9.png)
 <div align="center",width="100">
