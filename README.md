@@ -164,7 +164,7 @@ pip install -r requirements.txt
 **For Linux:**
 ```
 pip install vllm
-vllm serve /path/to/Qwen3-VL-32B-Instruct-AWQ \
+vllm serve /path/to/Qwen3-VL-32B-Instruct \
     --port 8000 \
     --trust-remote-code \
     --enable-auto-tool-choice \
@@ -178,10 +178,10 @@ vllm serve /path/to/Qwen3-VL-32B-Instruct-AWQ \
 ```powershell
 docker run -d --gpus all `
     -p 8000:8000 `
-    -v /path/to/Qwen3-VL-32B-Instruct-AWQ:/models/Qwen3-VL-32B-Instruct-AWQ `
+    -v /path/to/Qwen3-VL-32B-Instruct:/models/Qwen3-VL-32B-Instruct `
     --name vllm-server `
     vllm/vllm-openai:latest `
-    --model /models/Qwen3-VL-32B-Instruct-AWQ `
+    --model /models/Qwen3-VL-32B-Instruct `
     --port 8000 `
     --trust-remote-code `
     --enable-auto-tool-choice `
@@ -191,7 +191,7 @@ docker run -d --gpus all `
 ```
 
 **Note:** 
-- Replace `/path/to/Qwen3-VL-32B-Instruct-AWQ` with your actual model path.
+- Replace `/path/to/Qwen3-VL-32B-Instruct` with your actual model path.
 - The vLLM server will be available at `http://localhost:8000/v1` by default.
 
 
