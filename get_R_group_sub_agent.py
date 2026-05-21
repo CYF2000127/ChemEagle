@@ -569,14 +569,14 @@ def parse_coref_data_with_fallback(data):
                     "smiles": entry["smiles"],
                     "text": entry["sub_text"],
                     #"bbox": entry["bbox"],
-                    "bbox_id": entry["bbox_id"],
+                    "bbox_id": entry.get("bbox_id", ""),
                 }
             else:
                 result_item = {
                     "smiles": entry["smiles"],
                     "texts": ["There is no label or failed to detect, please recheck the image again"],
                     #"bbox": entry["bbox"],
-                    "bbox_id": entry["bbox_id"],
+                    "bbox_id": entry.get("bbox_id", ""),
                 }
             results.append(result_item)
 
