@@ -532,7 +532,7 @@ def backout(results, coref_results, molnextr):
         if len(products) == 1:
             if products[0] not in coref_results_dict:
                 print("Warning: No Label Parsed")
-                return
+                return toreturn
             product_labels = coref_results_dict[products[0]]
             prod = products[0]
             label_idx = product_labels[0]
@@ -546,7 +546,7 @@ def backout(results, coref_results, molnextr):
             '''
         else:
             print("Warning: More than one product detected")
-            return
+            return toreturn
         
         # format the regular expression for labels that correspond to the product label
         numbers = re.findall(r'\d+', label_idx)
@@ -755,7 +755,7 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
         if len(products) == 1:
             if products[0] not in coref_results_dict:
                 print("Warning: No Label Parsed")
-                return
+                return toreturn
             product_labels = coref_results_dict[products[0]]
             prod = products[0]
             label_idx = product_labels[0]
@@ -769,7 +769,7 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
             '''
         else:
             print("Warning: More than one product detected")
-            return
+            return toreturn
         
         # format the regular expression for labels that correspond to the product label
         numbers = re.findall(r'\d+', label_idx)
