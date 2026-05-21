@@ -1335,7 +1335,7 @@ def process_reaction_image_with_product_variant_R_group_OS(
     *,
     model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
     base_url: Optional[str] = "http://localhost:8000/v1",
-    : Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     Aligned with process_reaction_image_with_product_variant_R_group workflow, but uses a local/self-hosted model compatible with OpenAI Chat Completions protocol (such as vLLM or Ollama).
