@@ -329,10 +329,10 @@ The input can be any chemical graphics; feel free to try more examples!
 (NOTE: If the local CPU is larger than 8 cores, it is recommended to use the local code, which will be faster than the web demo. It will also be significantly faster using a GPU. The current version runs by default on the CPU for stability. The online version may not be as updated as the GitHub version.)
 
 ![visualization](examples/reaction5.png)
-![visualization](examples/reaction6.png)
 ![visualization](examples/reaction1.jpg)
 ![visualization](examples/reaction2.png)
 ![visualization](examples/reaction4.png)
+![visualization](examples/reaction6.png)
 ![visualization](examples/molecules1.png)
 
 ## :warning: Acknowledgement
