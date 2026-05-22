@@ -47,9 +47,9 @@ In this work, we present ChemEAGLE, a multimodal large language model (MLLM)-bas
 | **SMILESReconstructor** | Molecular Recognition             | Reconstructs reactant SMILES from product variants     |
 | **RxnImgParser**        | Reaction Image Parsing            | Parsing reaction template images into bounding boxes and components |
 | **RxnConInterpreter**   | Reaction Image Parsing            | Assigns condition roles to extracted condition text     |
-|**OPSIN** |  Web Service for Name2SMILES              | https://opsin.ch.cam.ac.uk/opsin/ |
-|**PUBCHEM**|      Web Service for Name2SMILES         | https://pubchem.ncbi.nlm.nih.gov/rest/pug|
-|**CIR** |       Web Service for Name2SMILES     | https://cactus.nci.nih.gov/chemical/structure|
+|**OPSIN** |  Web Service for Name2SMILES                     | Converts chemical names to SMILES strings https://opsin.ch.cam.ac.uk/opsin/ |
+|**PUBCHEM**|      Web Service for Name2SMILES                | Converts chemical names to SMILES strings https://pubchem.ncbi.nlm.nih.gov/rest/pug|
+|**CIR** |       Web Service for Name2SMILES                  | Converts chemical names to SMILES strings https://cactus.nci.nih.gov/chemical/structure|
 
 
 
