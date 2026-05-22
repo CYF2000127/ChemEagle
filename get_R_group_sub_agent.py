@@ -569,14 +569,14 @@ def parse_coref_data_with_fallback(data):
                     "smiles": entry["smiles"],
                     "text": entry["sub_text"],
                     #"bbox": entry["bbox"],
-                    "bbox_id": entry["bbox_id"],
+                    "bbox_id": entry.get("bbox_id", ""),
                 }
             else:
                 result_item = {
                     "smiles": entry["smiles"],
                     "texts": ["There is no label or failed to detect, please recheck the image again"],
                     #"bbox": entry["bbox"],
-                    "bbox_id": entry["bbox_id"],
+                    "bbox_id": entry.get("bbox_id", ""),
                 }
             results.append(result_item)
 
@@ -1031,6 +1031,7 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
  
     client = AzureOpenAI(
         =,
+        api_key=API_KEY,
         api_version=API_VERSION,
         azure_endpoint=AZURE_ENDPOINT
     )
@@ -1334,7 +1335,7 @@ def process_reaction_image_with_product_variant_R_group_OS(
     *,
     model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
     base_url: Optional[str] = "http://localhost:8000/v1",
-    : Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     Aligned with process_reaction_image_with_product_variant_R_group workflow, but uses a local/self-hosted model compatible with OpenAI Chat Completions protocol (such as vLLM or Ollama).

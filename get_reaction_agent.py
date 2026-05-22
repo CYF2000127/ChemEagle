@@ -812,7 +812,7 @@ def _tesseract_ocr_image(image_path: str) -> str:
 
 
 def get_reaction_c(image_path: str) -> dict:
-    raw_prediction = model1.predict_image_file(image_path, molscribe=True, ocr=True)
+    raw_prediction = model1.predict_image_file(image_path, molnextr=True, ocr=True)
     conditions_per_reaction = []
     for reaction in raw_prediction:
         conds = reaction.get('conditions', [])
