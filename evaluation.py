@@ -17,10 +17,6 @@ _STEREO = True
 _STRIP_SALTS = True
 _THRESHOLD = 0.5
 
-
-# --------------------------------------------------------------------------- #
-# I/O                                                                          #
-# --------------------------------------------------------------------------- #
 def load_samples(path: str) -> Dict[str, dict]:
     """Load a predictions / ground-truth JSON file into a {id: sample} dict."""
     with open(path, "r", encoding="utf-8") as f:
