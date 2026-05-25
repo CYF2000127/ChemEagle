@@ -174,7 +174,7 @@ def ChemEagle(
     planner_response = client.chat.completions.create(
         model='gpt-5-mini',
         messages=[
-            {'role': 'system', 'content': "You are a chemical image understanding and extraction planning expert.After checking the image, your ONLY task is to SELECT and CALL the most appropriate agents from the list below to best fit the data extraction of the image."},
+            {'role': 'system', 'content': "You are a chemical image understanding and extraction planning expert. After checking the image, your ONLY task is to SELECT and CALL the most appropriate agents from the list below to best fit the data extraction of the image."},
             {
                 'role': 'user',
                 'content': [
@@ -322,7 +322,7 @@ def ChemEagle(
 
     gpt_output = json.loads(response.choices[0].message.content)
     if text_extraction_result is not None:
-        gpt_output["text_extraction"] = text_extraction_result
+        gpt_output["text_extraction"] = [text_extraction_result]
     print(gpt_output)
     return gpt_output
 
@@ -363,7 +363,7 @@ def ChemEagle_OS(
         model=model_name,
         temperature=0,
         messages=[
-            {'role': 'system', 'content': "You are a chemical image understanding and extraction planning expert.After checking the image, your ONLY task is to SELECT and CALL the most appropriate agents from the list below to best fit the data extraction of the image."},
+            {'role': 'system', 'content': "You are a chemical image understanding and extraction planning expert. After checking the image, your ONLY task is to SELECT and CALL the most appropriate agents from the list below to best fit the data extraction of the image."},
             {
                 'role': 'user',
                 'content': [
@@ -557,6 +557,6 @@ def ChemEagle_OS(
                 return tool_results_dict
 
     if text_extraction_result is not None:
-        gpt_output["text_extraction"] = text_extraction_result
+        gpt_output["text_extraction"] = [text_extraction_result]
     print(gpt_output)
     return gpt_output
