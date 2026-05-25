@@ -49,7 +49,7 @@ def ChemEagle(
     """
     Given a chemical reaction image path, extract reaction information
     using GPT models and tools, and return structured reaction data.
-    Supports plan observer and action observer.
+    Supports plan observer and action observer. Default set to False to save token and time.
 
     Args:
         image_path (str): Path to the image file.
