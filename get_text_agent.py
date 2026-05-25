@@ -10,7 +10,7 @@ import torch
 from chemiener import ChemNER
 from huggingface_hub import hf_hub_download
 ckpt_path = "./ner.ckpt"
-model2 = ChemNER(ckpt_path, device=torch.device('cpu'))
+model2 = ChemNER(ckpt_path, device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
 import base64
 import os
 import shutil
