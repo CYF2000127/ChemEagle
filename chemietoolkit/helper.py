@@ -1,6 +1,12 @@
 import re
 from typing import List, Optional
-
+import sys
+import json
+import numpy as np
+from PIL import Image
+import os
+import base64
+from typing import Optional, Dict, Any
 
 
 def _validate_and_fix_smiles(smiles: str) -> str:
@@ -37,15 +43,6 @@ def _validate_and_fix_smiles(smiles: str) -> str:
 
 
 def _validate_and_fix_smiles_in_dict(data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    递归地验证和修复字典中所有 'smiles' 字段的 SMILES 字符串。
-    
-    Args:
-        data: 可能包含 SMILES 字段的字典或列表
-        
-    Returns:
-        修复后的数据字典
-    """
     if isinstance(data, dict):
         result = {}
         for key, value in data.items():
