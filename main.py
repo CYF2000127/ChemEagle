@@ -308,6 +308,19 @@ def ChemEagle(
         assistant_message,
         *results,
     ]
+
+    if text_extraction_result is not None:
+        messages_list.append({
+        "role": "user",
+        "content": (
+            "Additionally, the text_extraction_agent has produced the following "
+            "JSON for the prose portion of the same image."
+            "```json\n"
+            + json.dumps(text_extraction_result, ensure_ascii=False, indent=2)
+            + "\n```"
+        ),
+    })
+    
     if observer_reason:
         messages_list.append({
             'role': 'user',
@@ -321,8 +334,10 @@ def ChemEagle(
     )
 
     gpt_output = json.loads(response.choices[0].message.content)
-    if text_extraction_result is not None:
-        gpt_output["text_extraction"] = [text_extraction_result]
+    
+    #if text_extraction_result is not None:
+    #    gpt_output["text_extraction"] = [text_extraction_result]
+        
     print(gpt_output)
     return gpt_output
 
@@ -509,6 +524,19 @@ def ChemEagle_OS(
         assistant_message,
         *results,
     ]
+
+    if text_extraction_result is not None:
+        messages_list.append({
+        "role": "user",
+        "content": (
+            "Additionally, the text_extraction_agent has produced the following "
+            "JSON for the prose portion of the same image."
+            "```json\n"
+            + json.dumps(text_extraction_result, ensure_ascii=False, indent=2)
+            + "\n```"
+        ),
+    })
+    
     if observer_reason:
         messages_list.append({
             'role': 'user',
@@ -556,7 +584,8 @@ def ChemEagle_OS(
                     tool_results_dict["text_extraction"] = text_extraction_result
                 return tool_results_dict
 
-    if text_extraction_result is not None:
-        gpt_output["text_extraction"] = [text_extraction_result]
+    #if text_extraction_result is not None:
+       # gpt_output["text_extraction"] = [text_extraction_result]
+    
     print(gpt_output)
     return gpt_output
