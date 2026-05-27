@@ -296,7 +296,6 @@ Errors raise `ChemEagleError` with a stable `error_code` (`rate_limited`,
 #### Full reference
 
 - 📖 **Live docs**: <https://app.chemeagle.net/api/v1/docs>
-  (rendered from [`api/docs/api.md`](api/docs/api.md))
 
 
 When the input is a multimodal chemical reaction graphic:
