@@ -46,11 +46,11 @@ In this work, we present ChemEAGLE, a multimodal large language model (MLLM)-bas
 | **RxnImgParser**        | Reaction Image Parsing            | Parsing reaction template images into bounding boxes and components |
 | **RxnConInterpreter**   | Reaction Image Parsing            | Assigns condition roles to extracted condition text     |
 | **MolNER**              | Text-based Information Extraction | Chemical named entity recognition from text            |
-| **FormulaSolver**       | Formula2Name                       | Converts chemical formula into chemical names that can be queried by Web Service |
+| **ChemRxnExtractor**    | Text-based Information Extraction | Extracts chemical reactions and roles from text        |
 |**OPSIN** |  Web Service for Name2SMILES                     | Converts chemical names to SMILES strings https://opsin.ch.cam.ac.uk/opsin/ |
 |**PUBCHEM**|      Web Service for Name2SMILES                | Converts chemical names to SMILES strings https://pubchem.ncbi.nlm.nih.gov/rest/pug|
 |**CIR** |       Web Service for Name2SMILES                  | Converts chemical names to SMILES strings https://cactus.nci.nih.gov/chemical/structure|
-| **ChemRxnExtractor**    | Text-based Information Extraction | Extracts chemical reactions and roles from text        |
+| **FormulaSolver**       | Formula2Name                       | Converts chemical formula into chemical names that can be queried by Web Service |
 
 
 
