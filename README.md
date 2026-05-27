@@ -229,7 +229,7 @@ for fname in sorted(os.listdir(output_dir)):
 print(results)
 ```
 
-### Benchmarking
+## Benchmarking
 All benchmark datasets and ground truth can be found in our [Huggingface Repo](https://huggingface.co/datasets/CYF200127/ChemEagle/tree/main)
 
 ## 🤗 Chemical information extraction using [ChemEAGLE.Web](https://app.chemeagle.net/) 
