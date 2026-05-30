@@ -635,26 +635,9 @@ Here is my step-by-step analysis:
         model=model_name,
         messages=messages,
         temperature=0,
-        # response_format={"type": "json_object"},  # vLLM may not support this
+        response_format={"type": "json_object"}
     )
 
-    # Parse response (support extracting JSON from text with reasoning)
     raw_content = response2.choices[0].message.content
     
-    try:
-        # First try direct JSON parsing
-        return json.loads(raw_content)
-    except json.JSONDecodeError:
-        # If direct parsing fails, try to extract JSON from text
-        try:
-            from get_R_group_sub_agent import extract_json_from_text_with_reasoning
-            result = extract_json_from_text_with_reasoning(raw_content)
-            if result is not None:
-                return result
-        except ImportError:
-            pass
-        
-        # If all else fails, return raw content wrapped in dict
-        print(f"⚠️ Warning: unable to parse JSON, returning raw content")
-        print(f"Raw content (last 500 chars):\n{raw_content[-500:]}")
-        return {"content": raw_content}
+    return raw_content
