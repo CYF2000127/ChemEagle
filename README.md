@@ -232,7 +232,7 @@ print(results)
 ## 🗂️ Benchmarking
 All benchmark datasets and ground truth can be found in our [Huggingface Repo](https://huggingface.co/datasets/CYF200127/ChemEagle/tree/main).
 
-## 🌐 Chemical information extraction using [ChemEAGLE.Web](https://app.chemeagle.net/) 
+## 🌐 Chemical information extraction using [ChemEAGLE.Web](https://app.chemeagle.net/) (Fixed some bugs at May 30)
 
 [comment]: <> ()
 ![visualization](examples/webapp2.png)
