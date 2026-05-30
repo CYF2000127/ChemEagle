@@ -232,7 +232,7 @@ print(results)
 ## 🗂️ Benchmarking
 All benchmark datasets and ground truth can be found in our [Huggingface Repo](https://huggingface.co/datasets/CYF200127/ChemEagle/tree/main).
 
-## 🌐 Chemical information extraction using [ChemEAGLE.Web](https://app.chemeagle.net/) (Fixed some bugs at May 30)
+## 🌐 Chemical information extraction using [ChemEAGLE.Web](https://app.chemeagle.net/) 
 
 [comment]: <> ()
 ![visualization](examples/webapp2.png)
@@ -240,6 +240,8 @@ All benchmark datasets and ground truth can be found in our [Huggingface Repo](h
   
 
 Go to our [ChemEAGLE.Web app demo](https://app.chemeagle.net/) to directly use our tool online for both image and PDF input! The built-in Ketcher editor on the right lets you instantly visualize, verify, and fine-tune any extracted molecular structure before exporting. Feel free to provide us with any feedback too! (Note: The app runs on the HPC4.ust.hk server with a maximum uptime of 3 days; it is restarted for maintenance every three days, please wait a moment if the site is temporarily unavailable.)
+
+#### May 30 Update: Fixed some output bugs.
 
 ### 🐍 Programmatic access: ChemEAGLE API & Python SDK (Testing)
 
