@@ -10,7 +10,6 @@ import torch
 from rxnim import RxnIM
 import json
 from molnextr.chemistry import _convert_graph_to_smiles
-
 from openai import AzureOpenAI, OpenAI, InternalServerError, RateLimitError, APIError
 import base64
 import numpy as np
