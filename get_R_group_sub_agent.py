@@ -28,6 +28,7 @@ from openai import InternalServerError, RateLimitError, APIError
 
 
 
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = ChemIEToolkit(device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')) 
 ckpt_path = "./rxn.ckpt"
