@@ -282,34 +282,34 @@ def text_extraction_agent(image_path: str, graphical_input: Optional[dict] = Non
 In this input reaction graphic, there is a chemical reaction scheme template with multiple product/fragment molecular sub-images or tables, conditions, and a text description underneath (or you will receive direct text input).
 Your task is to:
 
-1. **Entity Extraction**: First call the `MolNER`(“NER_from_text_in_image") tool to extract chemical identities (names, formulas, abbreviations) from the text description.
+1. **Entity Extraction**: First call the `MolNER`("NER_from_text_in_image") tool to extract chemical identities (names, formulas, abbreviations) from the text description.
 2. **Reaction Extraction**: Call the `RxnConInterpreter`("extract_reactions_from_text_in_image") tool to identify reaction types and relationships in the text description.
 3. **Correction & Alignment**: 
    - Check the tool results and correct any errors.
-   - Align the identified text entities with the graphical output (e.g., mapping "precatalyst B27" in text to the molecule B27 in the image).
+   - Align the identified text entities with the graphical output (e.g., mapping "precatalyst G32" in text to the molecule G32 in the image).
 4. **Output**: Your final output must be in JSON format. Use specific tags like `[reactant]`, `[reagent]`, `[ABBREVIATION]`, `[SMILES:...]` to annotate the original text.
 
 ### Example 1
 **User Input:**
-Text Input: "In 2010, an enantioselective formal [3+2] cycloaddition of NHC-bound azolium enolates and oxaziridines was described by Ye and co-workers. Aryl(alkyl)-disubstituted ketenes were used as precursors of azolium enolates. A bifunctional NHC precatalyst B27 bearing a free hydroxyl group was employed."
+Text Input: "A visible-light-driven decarboxylative Giese addition of redox-active N-hydroxyphthalimide esters and acrylonitriles was reported by MacMillan and colleagues. Alpha-amino carboxylic acids were utilized as precursors of N-hydroxyphthalimide esters. A highly active PC photocatalyst G32 containing a bulky ligand."
 
 **Assistant Response:**
 Here is my step-by-step analysis:
 
 **Step 1: Entity Extraction (MolNER)**
 * **Observation:**
-    * "NHC-bound azolium enolates" -> Chemical (Plural/Class)
-    * "oxaziridines" -> Chemical (Systematic Name)
-    * "Aryl(alkyl)-disubstituted ketenes" -> Chemical (Reactant precursor)
-    * "NHC" -> Abbreviation
-    * "B27" -> Chemical (Identifier/Reagent)
+    * "N-hydroxyphthalimide esters" -> Chemical (Plural/Class)
+    * "acrylonitriles" -> Chemical (Systematic Name)
+    * "Alpha-amino carboxylic acids" -> Chemical (Reactant precursor)
+    * "PC" -> Abbreviation
+    * "G32" -> Chemical (Identifier/Reagent)
 * **Action:** Tag these entities with their specific roles and types.
 
 **Step 2: Reaction & Structure Interpretation (RxnConInterpreter)**
 * **Observation:**
-    * "B27" is identified as a specific precatalyst.
-    * **Action:** Retrieve/Associate the SMILES for B27 from the tool/image context: `CCCC(C=CC=C1)=C1[N+]2=CN3[C@H](C(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))O)CCC3=N2.F[B-](F)(F)F`.
-    * "azolium enolates" and "oxaziridines" are participating reactants in a [3+2] cycloaddition.
+    * "G32" is identified as a specific precatalyst.
+    * **Action:** Retrieve/Associate the SMILES for G32 from the tool/image context: `CCOC(C1=C(OC(C[C@@H]1C2=CC=CC=C2)=O)C)=O,CC1=CC(C)=CC(C)=C1[N+]2=CN3C(CO[C@@H]4[C@H]3C5=C(C=CC=C5)C4)=N2.F[B-](F)(F)F`.
+    * "N-hydroxyphthalimide esters" and "acrylonitriles" are participating reactants in a decarboxylative Giese addition.
 
 **Step 3: Text Alignment & Annotation**
 * **Thought:** I need to inject the extracted tags and SMILES directly into the original text string to create the final description.
@@ -318,8 +318,10 @@ Here is my step-by-step analysis:
 **Final JSON Output:**
 ```json
 {
-  "annotated_text": "In 2010, an enantioselective formal [3+2] cycloaddition of NHC-bound azolium enolates [reactant][MULTIPLE] and oxaziridines [reactant][SYSTEMATIC] was described by Ye and co-workers. Aryl(alkyl)-disubstituted ketenes [reactant] were used as precursors of azolium enolates. A bifunctional NHC [ABBREVIATION] precatalyst B27 [reagent][IDENTIFIERS][SMILES:CCCC(C=CC=C1)=C1[N+]2=CN3[C@H](C(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))O)CCC3=N2.F[B-](F)(F)F] bearing a free hydroxyl group was employed."
+  "annotated_text": "A visible-light-driven decarboxylative Giese addition of redox-active N-hydroxyphthalimide esters [reactant][MULTIPLE] and acrylonitriles [reactant][SYSTEMATIC] was reported by MacMillan and colleagues. Alpha-amino carboxylic acids [reactant] were utilized as precursors of N-hydroxyphthalimide esters. A highly active PC [ABBREVIATION] photocatalyst Ir-44 [reagent][IDENTIFIERS][SMILES:CCOC(C1=C(OC(C[C@@H]1C2=CC=CC=C2)=O)C)=O,CC1=CC(C)=CC(C)=C1[N+]2=CN3C(CO[C@@H]4[C@H]3C5=C(C=CC=C5)C4)=N2.F[B-](F)(F)F] containing a bulky ligand."
 }
+```
+
 """
 
     if graphical_input:
@@ -501,30 +503,30 @@ Your task is to:
 2. **Reaction Extraction**: Call the `RxnConInterpreter`("extract_reactions_from_text_in_image") tool to identify reaction types and relationships in the text description.
 3. **Correction & Alignment**: 
    - Check the tool results and correct any errors.
-   - Align the identified text entities with the graphical output (e.g., mapping "precatalyst B27" in text to the molecule B27 in the image).
+   - Align the identified text entities with the graphical output (e.g., mapping "precatalyst G32" in text to the molecule G32 in the image).
 4. **Output**: Your final output must be in JSON format. Use specific tags like `[reactant]`, `[reagent]`, `[ABBREVIATION]`, `[SMILES:...]` to annotate the original text.
 
 ### Example 1
 **User Input:**
-Text Input: "In 2010, an enantioselective formal [3+2] cycloaddition of NHC-bound azolium enolates and oxaziridines was described by Ye and co-workers. Aryl(alkyl)-disubstituted ketenes were used as precursors of azolium enolates. A bifunctional NHC precatalyst B27 bearing a free hydroxyl group was employed."
+Text Input: "A visible-light-driven decarboxylative Giese addition of redox-active N-hydroxyphthalimide esters and acrylonitriles was reported by MacMillan and colleagues. Alpha-amino carboxylic acids were utilized as precursors of N-hydroxyphthalimide esters. A highly active PC photocatalyst G32 containing a bulky ligand."
 
 **Assistant Response:**
 Here is my step-by-step analysis:
 
 **Step 1: Entity Extraction (MolNER)**
 * **Observation:**
-    * "NHC-bound azolium enolates" -> Chemical (Plural/Class)
-    * "oxaziridines" -> Chemical (Systematic Name)
-    * "Aryl(alkyl)-disubstituted ketenes" -> Chemical (Reactant precursor)
-    * "NHC" -> Abbreviation
-    * "B27" -> Chemical (Identifier/Reagent)
+    * "N-hydroxyphthalimide esters" -> Chemical (Plural/Class)
+    * "acrylonitriles" -> Chemical (Systematic Name)
+    * "Alpha-amino carboxylic acids" -> Chemical (Reactant precursor)
+    * "PC" -> Abbreviation
+    * "G32" -> Chemical (Identifier/Reagent)
 * **Action:** Tag these entities with their specific roles and types.
 
 **Step 2: Reaction & Structure Interpretation (RxnConInterpreter)**
 * **Observation:**
-    * "B27" is identified as a specific precatalyst.
-    * **Action:** Retrieve/Associate the SMILES for B27 from the tool/image context: `CCCC(C=CC=C1)=C1[N+]2=CN3[C@H](C(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))O)CCC3=N2.F[B-](F)(F)F`.
-    * "azolium enolates" and "oxaziridines" are participating reactants in a [3+2] cycloaddition.
+    * "G32" is identified as a specific precatalyst.
+    * **Action:** Retrieve/Associate the SMILES for G32 from the tool/image context: `CCOC(C1=C(OC(C[C@@H]1C2=CC=CC=C2)=O)C)=O,CC1=CC(C)=CC(C)=C1[N+]2=CN3C(CO[C@@H]4[C@H]3C5=C(C=CC=C5)C4)=N2.F[B-](F)(F)F`.
+    * "N-hydroxyphthalimide esters" and "acrylonitriles" are participating reactants in a decarboxylative Giese addition.
 
 **Step 3: Text Alignment & Annotation**
 * **Thought:** I need to inject the extracted tags and SMILES directly into the original text string to create the final description.
@@ -533,7 +535,7 @@ Here is my step-by-step analysis:
 **Final JSON Output:**
 ```json
 {
-  "annotated_text": "In 2010, an enantioselective formal [3+2] cycloaddition of NHC-bound azolium enolates [reactant][MULTIPLE] and oxaziridines [reactant][SYSTEMATIC] was described by Ye and co-workers. Aryl(alkyl)-disubstituted ketenes [reactant] were used as precursors of azolium enolates. A bifunctional NHC [ABBREVIATION] precatalyst B27 [reagent][IDENTIFIERS][SMILES:CCCC(C=CC=C1)=C1[N+]2=CN3[C@H](C(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))O)CCC3=N2.F[B-](F)(F)F] bearing a free hydroxyl group was employed."
+  "annotated_text": "A visible-light-driven decarboxylative Giese addition of redox-active N-hydroxyphthalimide esters [reactant][MULTIPLE] and acrylonitriles [reactant][SYSTEMATIC] was reported by MacMillan and colleagues. Alpha-amino carboxylic acids [reactant] were utilized as precursors of N-hydroxyphthalimide esters. A highly active PC [ABBREVIATION] photocatalyst Ir-44 [reagent][IDENTIFIERS][SMILES:CCOC(C1=C(OC(C[C@@H]1C2=CC=CC=C2)=O)C)=O,CC1=CC(C)=CC(C)=C1[N+]2=CN3C(CO[C@@H]4[C@H]3C5=C(C=CC=C5)C4)=N2.F[B-](F)(F)F] containing a bulky ligand."
 }
 ```
 
