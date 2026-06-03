@@ -15,7 +15,7 @@ def _validate_and_fix_smiles(smiles: str) -> str:
     try:
         mol = Chem.MolFromSmiles(smiles)
         if mol is not None:
-            return smiles  # SMILES 有效，无需修复
+            return smiles  # SMILES is valid, no fix needed
     except Exception:
         pass
     
@@ -47,10 +47,10 @@ def _validate_and_fix_smiles_in_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         result = {}
         for key, value in data.items():
             if key == 'smiles' and isinstance(value, str):
-                # 修复 SMILES
+                # Fix SMILES
                 result[key] = _validate_and_fix_smiles(value)
             elif isinstance(value, (dict, list)):
-                # 递归处理
+                # Process recursively
                 result[key] = _validate_and_fix_smiles_in_dict(value)
             else:
                 result[key] = value
@@ -551,7 +551,7 @@ def _resolve_name_to_smiles(name: str) -> Optional[str]:
         if cached is not None:
             print(f"[name->SMILES cache] hit: '{key}' -> {cached!r}")
             return cached
-        # 之前命中过负缓存（None）：重试 OPSIN/OCSR，因为规则可能已更新
+        # Previously hit a negative cache (None): retry OPSIN/OCSR, since rules may have been updated
         print(f"[name->SMILES cache] retry negative for '{key}'")
         smi = None
     else:
