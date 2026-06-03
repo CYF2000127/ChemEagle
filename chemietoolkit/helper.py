@@ -9,6 +9,7 @@ import base64
 from typing import Optional, Dict, Any
 
 
+
 def _validate_and_fix_smiles(smiles: str) -> str:
     if not RDKIT_AVAILABLE or not smiles:
         return smiles
