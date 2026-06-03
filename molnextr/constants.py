@@ -210,7 +210,7 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['N((SO2Ph))2'],'N(S(=O)(=O)c1ccccc1)S(=O)(=O)c1ccccc1','N(S(=O)(=O)c1ccccc1)S(=O)(=O)c1ccccc1',0.5),
     Substitution(['NHTs'],'NS(=O)(=O)c1ccc(cc1)C','NS(=O)(=O)c1ccc(cc1)C',0.5),
     Substitution(['OCOCH3'],'OC(=O)C','OC(=O)C',0.5),
-    Substitution(['CO2tBu', 'CO2tBu'], 'C(=O)OC(C)(C)C', "C(=O)OC(C)(C)C", 0.3),#这个替换好像不太对
+    Substitution(['CO2tBu', 'CO2tBu'], 'C(=O)OC(C)(C)C', "C(=O)OC(C)(C)C", 0.3),# this substitution seems a bit off
     Substitution(['ScH3','SCH3'],'SC','SC',0.5),
     Substitution(['n-Pent'],'CCCCC','CCCCC',0.5),
     Substitution(['H3','H'],'','',0.5),
