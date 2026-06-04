@@ -204,7 +204,6 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['F3'],'(F)(F)F','(F)(F)F',0.5),
     Substitution(['AgSe','AgScF3'],'[Ag+].[S-]C(F)(F)F','[Ag+].[S-]C(F)(F)F',0.5),
     Substitution(['Me3Si'],'[Si](C)(C)C','[Si](C)(C)C',0.5),
-    Substitution(['(H)'],'H','H',0.5),
     Substitution(['CN'],'C#N','C#N',0.5),
     Substitution(['SN'],'SN','SN',0.5),
 
@@ -214,7 +213,6 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['CO2tBu', 'CO2tBu'], 'C(=O)OC(C)(C)C', "C(=O)OC(C)(C)C", 0.3),# this substitution seems a bit off
     Substitution(['ScH3','SCH3'],'SC','SC',0.5),
     Substitution(['n-Pent'],'CCCCC','CCCCC',0.5),
-    Substitution(['H3','H'],'','',0.5),
 
 ]
 
