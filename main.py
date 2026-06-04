@@ -308,13 +308,17 @@ def ChemEagle(
     ]
 
     if text_extraction_result is not None:
+        if isinstance(text_extraction_result, dict) and "annotated_text" in text_extraction_result:
+            _text_extraction_for_msg = {"annotated_text": text_extraction_result["annotated_text"]}
+        else:
+            _text_extraction_for_msg = text_extraction_result
         messages_list.append({
         "role": "user",
         "content": (
             "Additionally, the text_extraction_agent has produced the following "
             "JSON for the prose portion of the same image."
             "```json\n"
-            + json.dumps(text_extraction_result, ensure_ascii=False, indent=2)
+            + json.dumps(_text_extraction_for_msg, ensure_ascii=False, indent=2)
             + "\n```"
         ),
     })
@@ -338,8 +342,11 @@ def ChemEagle(
 
 
     
-    #if text_extraction_result is not None:
-    #    gpt_output["text_extraction"] = [text_extraction_result]
+    if text_extraction_result is not None:
+        if isinstance(text_extraction_result, dict) and "annotated_text" in text_extraction_result:
+            gpt_output["text_extraction"] = [{"annotated_text": text_extraction_result["annotated_text"]}]
+        else:
+            gpt_output["text_extraction"] = [text_extraction_result]
         
     print(gpt_output)
     return gpt_output
@@ -529,13 +536,17 @@ def ChemEagle_OS(
     ]
 
     if text_extraction_result is not None:
+        if isinstance(text_extraction_result, dict) and "annotated_text" in text_extraction_result:
+            _text_extraction_for_msg = {"annotated_text": text_extraction_result["annotated_text"]}
+        else:
+            _text_extraction_for_msg = text_extraction_result
         messages_list.append({
         "role": "user",
         "content": (
             "Additionally, the text_extraction_agent has produced the following "
             "JSON for the prose portion of the same image."
             "```json\n"
-            + json.dumps(text_extraction_result, ensure_ascii=False, indent=2)
+            + json.dumps(_text_extraction_for_msg, ensure_ascii=False, indent=2)
             + "\n```"
         ),
     })
@@ -590,8 +601,11 @@ def ChemEagle_OS(
                     tool_results_dict["text_extraction"] = text_extraction_result
                 return tool_results_dict
 
-    #if text_extraction_result is not None:
-       # gpt_output["text_extraction"] = [text_extraction_result]
+    if text_extraction_result is not None:
+        if isinstance(text_extraction_result, dict) and "annotated_text" in text_extraction_result:
+            gpt_output["text_extraction"] = [{"annotated_text": text_extraction_result["annotated_text"]}]
+        else:
+            gpt_output["text_extraction"] = [text_extraction_result]
     
     print(gpt_output)
     return gpt_output
