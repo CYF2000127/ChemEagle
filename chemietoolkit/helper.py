@@ -8,15 +8,16 @@ import os
 import base64
 from typing import Optional, Dict, Any
 
+# Silence all module-level diagnostic prints from this file.
+def print(*args, **kwargs):  # noqa: A001 - intentional shadow of builtin
+    pass
+
 try:
     from rdkit import Chem
     RDKIT_AVAILABLE = True
 except ImportError:
     Chem = None
     RDKIT_AVAILABLE = False
-
-def print(*args, **kwargs):  # noqa: A001 - intentional shadow of builtin
-    pass
 
 
 def _validate_and_fix_smiles(smiles: str) -> str:
@@ -44,6 +45,7 @@ def _validate_and_fix_smiles(smiles: str) -> str:
         try:
             mol = Chem.MolFromSmiles(test_smiles)
             if mol is not None:
+                print(f"[SMILES Fix] Fixed invalid SMILES by adding charge to N:\n  Original: {smiles}\n  Fixed:    {test_smiles}")
                 return test_smiles
         except Exception:
             continue
@@ -86,6 +88,7 @@ _PUBCHEM_SMILES_CACHE: Dict[str, Optional[str]] = {}
 # ---------------------------------------------------------------------------
 # Persistent cache (survives process restarts).
 # Override path with env var CHEMEAGLE_CACHE_DIR.
+# Default: same directory as this helper.py (chemietoolkit/).
 # ---------------------------------------------------------------------------
 _CACHE_DIR = os.path.expanduser(
     os.environ.get('CHEMEAGLE_CACHE_DIR', os.path.dirname(os.path.abspath(__file__)))
@@ -102,6 +105,7 @@ def _load_persistent_cache() -> None:
             entries = blob.get('entries', {})
             if isinstance(entries, dict):
                 _PUBCHEM_SMILES_CACHE.update(entries)
+                print(f"[name->SMILES cache] loaded {len(entries)} entries from {_CACHE_FILE}")
     except FileNotFoundError:
         pass
     except Exception as e:
@@ -856,3 +860,168 @@ def _has_text_extraction(agent_names_lower: List[str]) -> bool:
     """Check if text extraction agent is in the agent list (substring match)."""
     return any("text extraction agent" in a or "text_extraction_agent" in a
                for a in agent_names_lower)
+
+
+
+def _is_wildcard_symbol(sym):
+    if not isinstance(sym, str):
+        return False
+    s = sym.strip()
+    if s.startswith('[') and s.endswith(']'):
+        s = s[1:-1]
+    if not s:
+        return False
+    if s == '*':
+        return True
+    if s[0] in ('R', 'r') and (len(s) == 1 or s[1:].isdigit()):
+        return True
+    if s.startswith('Ar') and (len(s) == 2 or s[2:].isdigit()):
+        return True
+    return False
+
+
+def _find_sites_in_graph(symbols, edges):
+    sites = []
+    n = len(symbols)
+    for i, sym in enumerate(symbols):
+        s = sym[1:-1] if isinstance(sym, str) and sym.startswith('[') and sym.endswith(']') else sym
+        if s != 'C':
+            continue
+        o_idx = None
+        non_o_neighbours = []
+        for j in range(n):
+            if j == i:
+                continue
+            order = edges[i][j] if i < len(edges) and j < len(edges[i]) else 0
+            if order == 0:
+                continue
+            jsym = symbols[j]
+            jbare = jsym[1:-1] if isinstance(jsym, str) and jsym.startswith('[') and jsym.endswith(']') else jsym
+            if order == 2 and jbare == 'O':
+                o_other = 0
+                for k in range(n):
+                    if k == j or k == i:
+                        continue
+                    if (j < len(edges) and k < len(edges[j]) and edges[j][k]) or \
+                       (k < len(edges) and j < len(edges[k]) and edges[k][j]):
+                        o_other += 1
+                if o_other == 0:
+                    o_idx = j
+                    continue
+            non_o_neighbours.append(j)
+        if o_idx is None:
+            continue
+        if not non_o_neighbours:
+            continue
+        if all(_is_wildcard_symbol(symbols[k]) for k in non_o_neighbours):
+            sites.append((i, o_idx))
+    return sites
+
+
+def _insert_central_C_in_graph(symbols, coords, edges, c_idx, o_idx):
+    n = len(symbols)
+    symbols.append('C')
+    cx, cy = coords[c_idx][0], coords[c_idx][1]
+    ox, oy = coords[o_idx][0], coords[o_idx][1]
+    coords.append([(cx + ox) / 2.0, (cy + oy) / 2.0])
+    for row in edges:
+        row.append(0)
+    edges.append([0] * (n + 1))
+    edges[c_idx][o_idx] = 0
+    edges[o_idx][c_idx] = 0
+    edges[c_idx][n] = 2
+    edges[n][c_idx] = 2
+    edges[n][o_idx] = 2
+    edges[o_idx][n] = 2
+    return n
+
+
+def _rebuild_atoms_bonds(item):
+    symbols = item.get('symbols')
+    coords = item.get('coords')
+    edges = item.get('edges')
+    if symbols is None or coords is None or edges is None:
+        return
+    if 'atoms' in item:
+        new_atoms = []
+        for sym, (x, y) in zip(symbols, coords):
+            new_atoms.append({
+                'atom_symbol': sym,
+                'x': round(float(x), 3),
+                'y': round(float(y), 3),
+            })
+        item['atoms'] = new_atoms
+    if 'bonds' in item:
+        _ORDER2NAME = {1: 'single', 2: 'double', 3: 'triple', 4: 'aromatic',
+                       5: 'solid wedge', 6: 'dashed wedge'}
+        new_bonds = []
+        n = len(symbols)
+        for i in range(n):
+            for j in range(i + 1, n):
+                order = edges[i][j] if i < len(edges) and j < len(edges[i]) else 0
+                if order:
+                    new_bonds.append({
+                        'bond_type': _ORDER2NAME.get(order, 'single'),
+                        'endpoint_atoms': (i, j),
+                    })
+        item['bonds'] = new_bonds
+
+
+def _patch_item_inplace(item, conversion_function, tag=''):
+    symbols = item.get('symbols')
+    coords = item.get('coords')
+    edges = item.get('edges')
+    if not (isinstance(symbols, list) and isinstance(coords, list) and isinstance(edges, list)):
+        return False
+    sites = _find_sites_in_graph(symbols, edges)
+    if not sites:
+        return False
+    old_smiles = item.get('smiles')
+    for c_idx, o_idx in sorted(sites, key=lambda p: -p[0]):
+        _insert_central_C_in_graph(symbols, coords, edges, c_idx, o_idx)
+    try:
+        new_smiles, new_molfile, _extra = conversion_function(coords, symbols, edges)
+        item['smiles'] = new_smiles
+        item['molfile'] = new_molfile
+    except Exception as e:
+        print(f"[ketene-patch{tag}] WARNING: graph->smiles failed: {e}")
+        return False
+    _rebuild_atoms_bonds(item)
+    print(f"[ketene-patch{tag}] {old_smiles!r} -> {item.get('smiles')!r}  "
+          f"(graph: +1 atom, sites={sites})")
+    return True
+
+
+
+def _patch_to_reaction(updated_data):
+    if not updated_data:
+        return updated_data
+    from molnextr.chemistry import _convert_graph_to_smiles
+    for rxn in updated_data:
+        for key in ('reactants', 'conditions', 'products'):
+            for item in rxn.get(key, []) or []:
+                if 'symbols' in item and 'coords' in item and 'edges' in item:
+                    _patch_item_inplace(item, _convert_graph_to_smiles, tag=f'[rxn:{key}]')
+                else:
+                    sm = item.get('smiles')
+                    if isinstance(sm, str) and sm == '*C(*)=O':
+                        item['smiles'] = '*C(*)=C=O'
+                        print(f"[ketene-patch][rxn:{key}][smiles-only] {sm!r} -> '*C(*)=C=O'")
+    return updated_data    
+
+
+
+def _patch_to_mol(updated_data):
+    if not updated_data:
+        return updated_data
+    from molnextr.chemistry import _convert_graph_to_smiles
+    for item in updated_data:
+        for bbox in item.get('bboxes', []) or []:
+            if 'symbols' in bbox and 'coords' in bbox and 'edges' in bbox:
+                _patch_item_inplace(bbox, _convert_graph_to_smiles, tag='[mol]')
+            else:
+                sm = bbox.get('smiles')
+                if isinstance(sm, str) and sm == '*C(*)=O':
+                    bbox['smiles'] = '*C(*)=C=O'
+                    print(f"[ketene-patch][mol][smiles-only] {sm!r} -> '*C(*)=C=O'")
+    return updated_data
