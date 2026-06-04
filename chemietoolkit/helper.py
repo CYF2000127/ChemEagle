@@ -43,7 +43,7 @@ def _validate_and_fix_smiles(smiles: str) -> str:
     return smiles
 
 
-def _validate_and_fix_smiles_in_dict(data: Dict[str, Any]) -> Dict[str, Any]:
+def fallback_validate_and_fix_smiles_in_dict(data: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(data, dict):
         result = {}
         for key, value in data.items():
@@ -52,12 +52,12 @@ def _validate_and_fix_smiles_in_dict(data: Dict[str, Any]) -> Dict[str, Any]:
                 result[key] = _validate_and_fix_smiles(value)
             elif isinstance(value, (dict, list)):
                 # Process recursively
-                result[key] = _validate_and_fix_smiles_in_dict(value)
+                result[key] = fallback_validate_and_fix_smiles_in_dict(value)
             else:
                 result[key] = value
         return result
     elif isinstance(data, list):
-        return [_validate_and_fix_smiles_in_dict(item) for item in data]
+        return [fallback_validate_and_fix_smiles_in_dict(item) for item in data]
     else:
         return data
 
@@ -614,7 +614,7 @@ def _resolve_smiles_for_condition_item(item: Dict[str, Any]) -> None:
             item['smiles'] = mixed
 
 
-def _resolve_condition_smiles_in_data(data: Any) -> Any:
+def fallback_resolve_condition_smiles_in_data(data: Any) -> Any:
     """Walk the result tree; for every entry inside a `conditions` list, attempt
     a PubChem-based SMILES override.
 
@@ -626,12 +626,12 @@ def _resolve_condition_smiles_in_data(data: Any) -> Any:
                 for it in value:
                     if isinstance(it, dict):
                         _resolve_smiles_for_condition_item(it)
-                        _resolve_condition_smiles_in_data(it)
+                        fallback_resolve_condition_smiles_in_data(it)
             else:
-                _resolve_condition_smiles_in_data(value)
+                fallback_resolve_condition_smiles_in_data(value)
     elif isinstance(data, list):
         for it in data:
-            _resolve_condition_smiles_in_data(it)
+            fallback_resolve_condition_smiles_in_data(it)
     return data
 
 
@@ -735,7 +735,7 @@ def _resolve_smiles_for_named_item(item: Dict[str, Any],
             return
 
 
-def _resolve_reactant_product_smiles_in_data(data: Any) -> Any:
+def fallback_resolve_reactant_product_smiles_in_data(data: Any) -> Any:
     """Walk the result tree; for any dict containing ``reactants``/``products``
     lists, fill in missing SMILES using the reactant/product text (after
     optional R-group placeholder substitution drawn from this reaction's
@@ -750,10 +750,10 @@ def _resolve_reactant_product_smiles_in_data(data: Any) -> Any:
                     for it in lst:
                         _resolve_smiles_for_named_item(it, subs)
         for v in data.values():
-            _resolve_reactant_product_smiles_in_data(v)
+            fallback_resolve_reactant_product_smiles_in_data(v)
     elif isinstance(data, list):
         for it in data:
-            _resolve_reactant_product_smiles_in_data(it)
+            fallback_resolve_reactant_product_smiles_in_data(it)
     return data
 
 
