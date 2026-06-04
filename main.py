@@ -327,9 +327,10 @@ def ChemEagle(
         })
 
     response = client.chat.completions.create(
-        model='gpt-5-mini',
+        model='gpt-4o',
         messages=messages_list,
         response_format={ 'type': 'json_object' },
+        temperature=0,
     )
 
     gpt_output = json.loads(response.choices[0].message.content)
