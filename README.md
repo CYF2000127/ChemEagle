@@ -328,6 +328,7 @@ The output dictionary should be a complete machine-readable reaction list with r
 "text_extraction":"..."
 }
 ```
+Note: Due to the characteristics of LLMs, slight variations in outputs may occur.
 The input can be any chemical graphics; feel free to try more examples! 
 
 
