@@ -8,7 +8,12 @@ import os
 import base64
 from typing import Optional, Dict, Any
 
-
+try:
+    from rdkit import Chem
+    RDKIT_AVAILABLE = True
+except ImportError:
+    Chem = None
+    RDKIT_AVAILABLE = False
 
 def _validate_and_fix_smiles(smiles: str) -> str:
     if not RDKIT_AVAILABLE or not smiles:
