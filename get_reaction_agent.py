@@ -18,7 +18,7 @@ from PIL import Image
 import os
 from typing import Optional
 import time
-
+from chemietoolkit.helper import _patch_to_reaction
 
 def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, **kwargs):
     last_exception = None
@@ -564,6 +564,7 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
         return input2
     
     updated_data = [update_input_with_symbols(gpt_output, input2[0], _convert_graph_to_smiles)]
+    updated_data = _patch_to_reaction(updated_data)
     print(f"rxn_agent_output:{updated_data}")
 
     return updated_data
@@ -794,6 +795,7 @@ def get_reaction_withatoms_correctR_OS(
         return input2
     
     updated_data = [update_input_with_symbols(gpt_output, input2[0], _convert_graph_to_smiles)]
+    updated_data = _patch_to_reaction(updated_data)
     print(f"rxn_agent_output:{updated_data}")
 
     return updated_data
