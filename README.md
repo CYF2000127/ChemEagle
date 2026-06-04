@@ -240,7 +240,7 @@ All benchmark datasets and ground truth can be found in our [Huggingface Repo](h
 <div align="center"> The interface of ChemEAGLE.Web. </div>
   
 
-Go to our [ChemEAGLE.Web app demo](https://app.chemeagle.net/) to directly use our tool online for both image and PDF input! The built-in Ketcher editor on the right lets you instantly visualize, verify, and fine-tune any extracted molecular structure before exporting. Feel free to provide us with any feedback too! (Note: The app runs on the HPC4.ust.hk server with a maximum uptime of 3 days; it is restarted for maintenance every three days, please wait a moment if the site is temporarily unavailable.)
+Go to our [ChemEAGLE.Web app demo](https://app.chemeagle.net/) to directly use our tool online for both image and PDF input! The built-in Ketcher editor on the right lets you instantly visualize, verify, and fine-tune any extracted molecular structure before exporting. Feel free to provide us with any feedback too! (Note: The app runs on the HPC4.ust.hk server with a maximum uptime of 3 days; it is restarted for maintenance every three days, please wait a moment if the site is temporarily unavailable or raises a connection error.)
 
 #### May 30 Update: Fixed some output bugs.
 
