@@ -261,7 +261,16 @@ def _strip_stoichiometry(text: str) -> str:
 
 
 def _candidate_chem_names(item: Dict[str, Any]) -> List[str]:
-    """Collect candidate chemical names from a condition-like item."""
+    """Collect candidate chemical names from a condition-like item.
+
+    Search order priority:
+      1. ``label``   — labels (e.g. "B17", "DMAP", "Cs2CO3") are short, exact
+         tokens and often match a curated alias or a previously cached entry
+         more reliably than the free-form ``text`` (which may carry
+         stoichiometry / "or" alternatives / mixture syntax).
+      2. ``text`` / ``name``  — full free-form description (and a
+         stoichiometry-stripped variant).
+    """
     cands: List[str] = []
     seen = set()
 
@@ -274,6 +283,13 @@ def _candidate_chem_names(item: Dict[str, Any]) -> List[str]:
         seen.add(s)
         cands.append(s)
 
+    # 1) label first (also covers the case where only `label` is present)
+    label = item.get('label')
+    if isinstance(label, str):
+        add(label)
+        add(_strip_stoichiometry(label))
+
+    # 2) free-form text / name
     for key in ('text', 'name'):
         v = item.get(key)
         if isinstance(v, str):
