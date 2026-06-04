@@ -15,6 +15,10 @@ except ImportError:
     Chem = None
     RDKIT_AVAILABLE = False
 
+def print(*args, **kwargs):  # noqa: A001 - intentional shadow of builtin
+    pass
+
+
 def _validate_and_fix_smiles(smiles: str) -> str:
     if not RDKIT_AVAILABLE or not smiles:
         return smiles
@@ -40,7 +44,6 @@ def _validate_and_fix_smiles(smiles: str) -> str:
         try:
             mol = Chem.MolFromSmiles(test_smiles)
             if mol is not None:
-                print(f"[SMILES Fix] Fixed invalid SMILES by adding charge to N:\n  Original: {smiles}\n  Fixed:    {test_smiles}")
                 return test_smiles
         except Exception:
             continue
@@ -84,7 +87,9 @@ _PUBCHEM_SMILES_CACHE: Dict[str, Optional[str]] = {}
 # Persistent cache (survives process restarts).
 # Override path with env var CHEMEAGLE_CACHE_DIR.
 # ---------------------------------------------------------------------------
-_CACHE_DIR = os.path.expanduser(os.environ.get('CHEMEAGLE_CACHE_DIR', '~/.cache/chemeagle'))
+_CACHE_DIR = os.path.expanduser(
+    os.environ.get('CHEMEAGLE_CACHE_DIR', os.path.dirname(os.path.abspath(__file__)))
+)
 _CACHE_FILE = os.path.join(_CACHE_DIR, 'name2smiles.json')
 _CACHE_VERSION = 1
 
@@ -97,7 +102,6 @@ def _load_persistent_cache() -> None:
             entries = blob.get('entries', {})
             if isinstance(entries, dict):
                 _PUBCHEM_SMILES_CACHE.update(entries)
-                print(f"[name->SMILES cache] loaded {len(entries)} entries from {_CACHE_FILE}")
     except FileNotFoundError:
         pass
     except Exception as e:
