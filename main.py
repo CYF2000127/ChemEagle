@@ -162,8 +162,8 @@ def ChemEagle(
         },
     ]
 
-    #with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
-    with open('./prompt/prompt_data.txt', 'r', encoding='utf-8') as prompt_file:
+    with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
+    #with open('./prompt/prompt_data.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
 
     with open('./prompt/prompt_plan.txt', 'r', encoding='utf-8') as prompt_file:
@@ -365,8 +365,8 @@ def ChemEagle_OS(
 
     base64_image = encode_image(image_path)
 
-   #with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
-    with open('./prompt/prompt_data.txt', 'r', encoding='utf-8') as prompt_file:
+    with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
+    #with open('./prompt/prompt_data.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
 
     with open('./prompt/prompt_plan.txt', 'r', encoding='utf-8') as prompt_file:
