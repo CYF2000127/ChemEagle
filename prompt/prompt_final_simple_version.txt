@@ -185,7 +185,8 @@ Situation 4：
   !!! After you carefully check the image, if this is a reaction image does not contain any tables or sets of product variants, and the "get_full_reaction_template" tool was called.
   Then based on the tool output, carefully recheck and compare the output of 'reaction_prediction' with the original image. If you notice that 'reaction_prediction' has obvious errors, such as having multiple steps of reaction but omitting many steps of the prediction. You have the right not to use the output of reaction_prediction. Please use all the molecules in the "molecule_coref" again, following the arrangement in the original diagram and the direction indicated by the arrows, and regenerate the reaction output.
 
-The output format of Situation 2, 3, 4 should follow the [### Example 1 and ### Example 2]
+Important note: The output format of Situation 2, 3, and 4 should follow the [### Example 1 and ### Example 2]. The condition entities must follow the format:  {"role": "xxx(Must have)", "text": "xxxx(Must have)", "smiles": "Any If Available", "label": "Any If Available"}
+
 
 Situation 5：
   !!! After you carefully check the image, if this is a single molecule image or a multiple molecules image, and only the "get_multi_molecular_full" agent tool was called. Based on the tool output, the output format should be like:
