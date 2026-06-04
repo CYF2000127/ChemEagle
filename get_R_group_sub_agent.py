@@ -1031,7 +1031,6 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
     """
  
     client = AzureOpenAI(
-        =
         api_key=API_KEY,
         api_version=API_VERSION,
         azure_endpoint=AZURE_ENDPOINT
