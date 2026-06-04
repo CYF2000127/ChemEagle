@@ -154,7 +154,7 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['NMe'], '[N]C', "[N]C", 0.2),
     Substitution(['TIPS'], '[Si](C(C)C)(C(C)C)C(C)C', '[Si](C(C)C)(C(C)C)C(C)C', 0.2),
     Substitution(['TlPS'], 'C', 'C', 0.2),
-    Substitution(['C6F5'], ' c1c(F)c(F)c(F)c(F)c1(F)', ' [c]1c(F)c(F)c(F)c(F)c1(F)', 0.2),
+    Substitution(['C6F5','C8F5'], ' c1c(F)c(F)c(F)c(F)c1(F)', ' [c]1c(F)c(F)c(F)c(F)c1(F)', 0.2),
     Substitution(['OC6Cl5'], '[O]c1c(Cl)c(Cl)c(Cl)c(Cl)c1(Cl)', '[O]c1c(Cl)c(Cl)c(Cl)c(Cl)c1(Cl)', 0.2),
     Substitution(['nC5H11','C5H11'], 'CCCCC', 'CCCCC', 0.2),
     Substitution(['nC4H9','C4H9'], 'CCCC', 'CCCC', 0.2),
