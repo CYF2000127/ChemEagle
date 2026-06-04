@@ -209,9 +209,7 @@ def ChemEagle(
                     print(f"[D] Plan observer reason: {reason}")
     
     agent_names_lower = [agent.lower() for agent in agent_list]
-    selected_area = _select_main_area(agent_names_lower)
-    
-    print(f"[D] Selected area: {selected_area}")
+    selected_area = _select_main_area(agent_names_lower)   
     
     AREA_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group,
@@ -223,7 +221,6 @@ def ChemEagle(
     
     has_text_extraction = _has_text_extraction(agent_names_lower)
 
-    print(f"[D] Executing main area: {selected_area}")
     main_area_result = AREA_MAP[selected_area](image_path=image_path)
     execution_logs = [{
         "id": "tool_call_0",
@@ -427,8 +424,6 @@ def ChemEagle_OS(
     agent_names_lower = [agent.lower() for agent in agent_list]
     selected_area = _select_main_area(agent_names_lower)
     
-    print(f"[OS_D] Selected area: {selected_area}")
-    
     AREA_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group_OS,
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group_OS,
@@ -444,7 +439,6 @@ def ChemEagle_OS(
         "process_reaction_image_with_table_R_group",
     )
 
-    print(f"[OS_D] Executing main area: {selected_area}")
     main_area_args = {"image_path": image_path}
     if selected_area in OS_TOOLS_ACCEPT_BASE_D:
         main_area_args["base_url"] = base_url
