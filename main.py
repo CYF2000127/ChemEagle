@@ -15,7 +15,7 @@ from get_reaction_agent import get_reaction_withatoms_correctR
 from get_R_group_sub_agent import process_reaction_image_with_table_R_group, process_reaction_image_with_product_variant_R_group,get_full_reaction_template_OS,get_full_reaction_template, get_multi_molecular_full,get_multi_molecular_full_OS, process_reaction_image_with_table_R_group_OS,process_reaction_image_with_product_variant_R_group_OS,get_full_reaction_OS,get_reaction_OS
 from get_observer import action_observer_agent, plan_observer_agent,action_observer_agent_OS, plan_observer_agent_OS
 from get_text_agent import text_extraction_agent, text_extraction_agent_OS
-from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _select_main_area, _has_text_extraction, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_condition_smiles_in_data
+from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _select_main_area, _has_text_extraction, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = ChemIEToolkit(device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')) 
