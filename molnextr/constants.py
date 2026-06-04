@@ -196,7 +196,10 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['2,4-Cl2C6H3','2, 4-Cl2C6H3','Cl2C6H3'], 'c1c(Cl)cc(Cl)cc1', "c1c(Cl)cc(Cl)cc1", 0.5),
 
     Substitution(['[CF3]2C6H3', '3,5-[CF3]2C6H3','3,5-(CF3)2C6H3'], '[c]1cc(C(F)(F)F)cc(C(F)(F)F)c1', "[c]1cc(C(F)(F)F)cc(C(F)(F)F)c1", 0.4),
-
+    Substitution(['B(OH)2','(HO)2B'], '[B]([OH])([OH])', "B(O)O", 0.4),
+    Substitution(['NPhth'], '[N]C(=O)c1ccccc1C(=O)N', "[N]C(=O)c1ccccc1C(=O)N", 0.5),
+    Substitution(['1-Nap'], '[c]1cccc2ccccc12', "[c]1cccc2ccccc12", 0.5),
+    Substitution(['PhCH2'], '[C]c1ccccc1', "[C]c1ccccc1", 0.5),
    ###NEW
     Substitution(['B(OH)2','B(0H)2'],'B(O)O','B(O)O',0.5),
     Substitution(['CF2H','HF2C','F2C'],'C(F)(F)','C(F)(F)',0.5),
@@ -214,6 +217,8 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['ScH3','SCH3'],'SC','SC',0.5),
     Substitution(['n-Pent'],'CCCCC','CCCCC',0.5),
 
+    Substitution(['Si(OEt)3'], '[Si](OCC)(OCC)OCC', '[Si](OCC)(OCC)OCC', 0.2),
+    Substitution(['SiPhMe2'], 'C[Si](C)(c1ccccc1', 'C[Si](C)(c1ccccc1', 0.2),
 ]
 
 ABBREVIATIONS = {abbrv: sub for sub in SUBSTITUTIONS for abbrv in sub.abbrvs}
