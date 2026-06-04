@@ -24,6 +24,7 @@ import os
 import copy
 from typing import Optional
 import time
+from chemietoolkit.helper import _patch_to_mol
 
 
 
@@ -885,6 +886,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
         return input_data
 
     updated_data = update_smiles_and_molfile(input2_updated, _convert_graph_to_smiles)
+    updated_data = _patch_to_mol(updated_data)
     print(f"mol_agent_output:{updated_data}")
 
     return updated_data
@@ -1166,6 +1168,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         return input_data
 
     updated_data = update_smiles_and_molfile(input2_updated, _convert_graph_to_smiles)
+    updated_data = _patch_to_mol(updated_data)
     print(f"mol_agent_output:{updated_data}")
 
     return updated_data
