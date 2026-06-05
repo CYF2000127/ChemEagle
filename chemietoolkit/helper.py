@@ -562,13 +562,27 @@ def _query_opsin_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
         return None
 
 
-def _resolve_name_to_smiles(name: str) -> Optional[str]:
-    """Unified name -> SMILES resolver.
+_LABEL_TOKEN_RE = re.compile(
+    r"^(?:"
+    r"[A-Za-z]{1,3}\d{1,3}[a-z'’]?"   # B17, B27, L1, S3a, M14a
+    r"|\d{1,3}[A-Za-z]{1,4}'?"        # 1a, 1f, 3aa
+    r"|\d{1,3}"                         # 11, 13
+    r")$"
+)
 
-    Order: curated alias map -> persistent cache -> PubChem (strict synonym) ->
-    OPSIN -> ``molnextr.chemistry.resolve_symbol_to_smiles`` (OCSR shorthand /
-    ArCHO / condensed formula). Caches hits; persists across process restarts.
-    """
+
+def _is_label_like(name: str) -> bool:
+    """True if ``name`` looks like a structure label rather than a chemical
+    name (e.g. ``B17``, ``L1``, ``1a``, ``11``)."""
+    if not isinstance(name, str):
+        return False
+    k = name.strip()
+    if not k:
+        return False
+    return bool(_LABEL_TOKEN_RE.match(k))
+
+
+def _resolve_name_to_smiles(name: str) -> Optional[str]:
     if not isinstance(name, str) or not name.strip():
         return None
     key = name.strip()
@@ -576,12 +590,21 @@ def _resolve_name_to_smiles(name: str) -> Optional[str]:
     if alias:
         print(f"[alias] '{key}' -> {alias}")
         return alias
+    if _is_label_like(key):
+        # Label-like token: only honour an explicit hit in the persistent
+        # cache (i.e. something the user added by hand). Never touch the
+        # network and never write a new entry.
+        cached = _PUBCHEM_SMILES_CACHE.get(key)
+        if cached:
+            print(f"[label cache] hit: '{key}' -> {cached!r}")
+            return cached
+        print(f"[label] skip resolution for label-like token '{key}'")
+        return None
     if key in _PUBCHEM_SMILES_CACHE:
         cached = _PUBCHEM_SMILES_CACHE[key]
         if cached is not None:
             print(f"[name->SMILES cache] hit: '{key}' -> {cached!r}")
             return cached
-        # Previously hit a negative cache (None): retry OPSIN/OCSR, since rules may have been updated
         print(f"[name->SMILES cache] retry negative for '{key}'")
         smi = None
     else:
