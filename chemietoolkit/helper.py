@@ -564,16 +564,14 @@ def _query_opsin_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
 
 _LABEL_TOKEN_RE = re.compile(
     r"^(?:"
-    r"[A-Za-z]{1,3}\d{1,3}[a-z'’]?"   # B17, B27, L1, S3a, M14a
-    r"|\d{1,3}[A-Za-z]{1,4}'?"        # 1a, 1f, 3aa
-    r"|\d{1,3}"                         # 11, 13
+    r"[A-Za-z]{1,3}\d{1,3}[a-z'’]?"   
+    r"|\d{1,3}[A-Za-z]{1,4}'?"       
+    r"|\d{1,3}"                        
     r")$"
 )
 
 
 def _is_label_like(name: str) -> bool:
-    """True if ``name`` looks like a structure label rather than a chemical
-    name (e.g. ``B17``, ``L1``, ``1a``, ``11``)."""
     if not isinstance(name, str):
         return False
     k = name.strip()
