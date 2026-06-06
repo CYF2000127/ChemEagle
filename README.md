@@ -172,7 +172,7 @@ vllm serve /path/to/Qwen3-VL-32B-Instruct \
     --trust-remote-code \
     --enable-auto-tool-choice \
     --tool-call-parser hermes \
-    --max-model-len 27200 \
+    --max-model-len 64000 \
     --limit-mm-per-prompt video=0
 ```
 
@@ -189,7 +189,7 @@ docker run -d --gpus all `
     --trust-remote-code `
     --enable-auto-tool-choice `
     --tool-call-parser hermes `
-    --max-model-len 27200 `
+    --max-model-len 64000 `
     --limit-mm-per-prompt.video 0
 ```
 
