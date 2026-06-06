@@ -237,7 +237,7 @@ def plan_observer_agent_OS(
     image_path: str,
     tool_calls: List[Any],
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
@@ -310,7 +310,7 @@ def action_observer_agent_OS(
     image_path: str,
     tool_result: Any,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
