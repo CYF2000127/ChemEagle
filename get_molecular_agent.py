@@ -895,7 +895,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
 def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
     image_path: str,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
