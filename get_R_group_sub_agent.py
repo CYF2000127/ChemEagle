@@ -1333,7 +1333,7 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
 def process_reaction_image_with_product_variant_R_group_OS(
     image_path: str,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct",
     base_url: Optional[str] = "http://localhost:8000/v1",
     api_key: Optional[str] = None,
 ) -> dict:
@@ -1879,7 +1879,7 @@ def process_reaction_image_with_table_R_group(image_path: str) -> dict:
 def process_reaction_image_with_table_R_group_OS(
     image_path: str,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct",
     base_url: Optional[str] = "http://localhost:8000/v1",
     api_key: Optional[str] = None,
 
