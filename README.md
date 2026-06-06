@@ -194,7 +194,7 @@ docker run -d --gpus all `
 ```
 
 **Note:** 
-- Replace `/path/to/Qwen3-VL-32B-Instruct` with your actual model path. For example `models/Qwen3-VL-32B-Instruct`.
+- Replace `/path/to/Qwen3-VL-32B-Instruct` with your actual model path. For example `/models/Qwen3-VL-32B-Instruct`.
 - The vLLM server will be available at `http://localhost:8000/v1` by default.
 
 
