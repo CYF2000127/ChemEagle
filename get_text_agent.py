@@ -464,7 +464,7 @@ def text_extraction_agent_OS(
     image_path: str,
     *,
     graphical_input: Optional[dict] = None,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
