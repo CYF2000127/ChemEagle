@@ -573,7 +573,7 @@ def get_reaction_withatoms_correctR(image_path: str) -> dict:
 def get_reaction_withatoms_correctR_OS(
     image_path: str,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
@@ -955,7 +955,7 @@ def get_reaction_con(image_path: str) -> dict:
 def get_reaction_con_OS(
     image_path: str,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
