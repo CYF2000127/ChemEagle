@@ -27,6 +27,39 @@ import time
 from chemietoolkit.helper import _patch_to_mol
 
 
+def _ga_bbox_iou(a, b) -> float:
+    """Intersection-over-union of two ``[x1, y1, x2, y2]`` boxes."""
+    if not (a and b and len(a) == 4 and len(b) == 4):
+        return 0.0
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _ga_best_iou_match_idx(target_bbox, orig_bboxes, iou_thresh=0.5):
+    """Index of the original bbox with the highest IoU vs ``target_bbox``.
+
+    Template reuse is allowed (the molecular flow expands one core into several
+    variants that all echo the same template bbox), so this does NOT exclude
+    already-claimed indices. Returns ``None`` below ``iou_thresh``.
+    """
+    best_idx, best_iou = None, 0.0
+    for i, bb in enumerate(orig_bboxes):
+        iou = _ga_bbox_iou(target_bbox, bb.get("bbox"))
+        if iou > best_iou:
+            best_iou, best_idx = iou, i
+    if best_idx is not None and best_iou >= iou_thresh:
+        return best_idx
+    return None
+
+
 
 def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, **kwargs):
     last_exception = None
@@ -806,15 +839,22 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
         for item1, item2 in zip(gpt_outputs, coref_results):
             orig_bboxes = item2.get('bboxes', [])
             orig_corefs = item2.get('corefs', [])
-            # 1. Construct new bboxes (strictly using the same bbox as template)
+            # 1. Construct new bboxes (prefer exact bbox template, fall back to best-IoU on drift)
             coord2idx = {tuple(bb['bbox']): i for i, bb in enumerate(orig_bboxes)}
             new_bboxes = []
+            # Track which new bbox indices each original template expanded into,
+            # so corefs can be rebuilt by index.
+            orig2new = {}
             for bb1 in item1.get('bboxes', []):
                 coord = tuple(bb1['bbox'])
                 if coord in coord2idx:
-                    bb_template = orig_bboxes[coord2idx[coord]]
+                    tmpl_idx = coord2idx[coord]
                 else:
-                    raise ValueError(f"Original template for bbox {coord} not found when expanding mol!")
+                    tmpl_idx = _ga_best_iou_match_idx(bb1.get('bbox'), orig_bboxes)
+                    if tmpl_idx is None:
+                        print(f"WARNING [mol-agent]: bbox {coord} not matched to any original template, skipping it.")
+                        continue
+                bb_template = orig_bboxes[tmpl_idx]
                 bb_new = copy.deepcopy(bb_template)
                 if 'symbols' in bb1:
                     bb_new['symbols'] = bb1['symbols']
@@ -826,24 +866,21 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
                 if 'sub_text' in bb1:
                     bb_new['sub_text'] = bb1['sub_text']
                 bb_new['bbox'] = bb1['bbox']
+                orig2new.setdefault(tmpl_idx, []).append(len(new_bboxes))
                 new_bboxes.append(bb_new)
-            
-            # 2. Build corefs (group all same-type mols with corresponding expanded label indices)
-            # Steps: find all new mol indices and new label index from the original group, then generate new groups by original corefs grouping
-            coord2new_idxs = {}
-            for idx, bb in enumerate(new_bboxes):
-                coord = tuple(bb['bbox'])
-                coord2new_idxs.setdefault(coord, []).append(idx)
+
+            # 2. Build corefs (rebuild via original-index -> new-index map; skip gracefully on dropped boxes)
             new_corefs = []
             for group in orig_corefs:
                 # Assume group = [mol_idx, idt_idx] or [mol_idx1, mol_idx2, ..., idt_idx]
                 label_idx = group[-1]
-                label_coord = tuple(orig_bboxes[label_idx]['bbox'])
-                new_label_idx = coord2new_idxs[label_coord][-1]  # label has only one
+                label_new_list = orig2new.get(label_idx, [])
+                if not label_new_list:
+                    continue
+                new_label_idx = label_new_list[-1]  # label has only one
                 # All expanded new indices of mols
                 for mol_idx in group[:-1]:
-                    mol_coord = tuple(orig_bboxes[mol_idx]['bbox'])
-                    for new_mol_idx in coord2new_idxs[mol_coord]:
+                    for new_mol_idx in orig2new.get(mol_idx, []):
                         new_corefs.append([new_mol_idx, new_label_idx])
             # 3. Assemble structure
             new_item = copy.deepcopy(item2)
@@ -895,7 +932,7 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR(image_p
 def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
     image_path: str,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
@@ -1090,15 +1127,22 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         for item1, item2 in zip(gpt_outputs, coref_results):
             orig_bboxes = item2.get('bboxes', [])
             orig_corefs = item2.get('corefs', [])
-            # 1. Construct new bboxes (strictly using the same bbox as template)
+            # 1. Construct new bboxes (prefer exact bbox template, fall back to best-IoU on drift)
             coord2idx = {tuple(bb['bbox']): i for i, bb in enumerate(orig_bboxes)}
             new_bboxes = []
+            # Track which new bbox indices each original template expanded into,
+            # so corefs can be rebuilt by index.
+            orig2new = {}
             for bb1 in item1.get('bboxes', []):
                 coord = tuple(bb1['bbox'])
                 if coord in coord2idx:
-                    bb_template = orig_bboxes[coord2idx[coord]]
+                    tmpl_idx = coord2idx[coord]
                 else:
-                    raise ValueError(f"Original template for bbox {coord} not found when expanding mol!")
+                    tmpl_idx = _ga_best_iou_match_idx(bb1.get('bbox'), orig_bboxes)
+                    if tmpl_idx is None:
+                        print(f"WARNING [mol-agent]: bbox {coord} not matched to any original template, skipping it.")
+                        continue
+                bb_template = orig_bboxes[tmpl_idx]
                 bb_new = copy.deepcopy(bb_template)
                 if 'symbols' in bb1:
                     bb_new['symbols'] = bb1['symbols']
@@ -1110,24 +1154,21 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
                 if 'sub_text' in bb1:
                     bb_new['sub_text'] = bb1['sub_text']
                 bb_new['bbox'] = bb1['bbox']
+                orig2new.setdefault(tmpl_idx, []).append(len(new_bboxes))
                 new_bboxes.append(bb_new)
-            
-            # 2. Build corefs (group all same-type mols with corresponding expanded label indices)
-            # Steps: find all new mol indices and new label index from the original group, then generate new groups by original corefs grouping
-            coord2new_idxs = {}
-            for idx, bb in enumerate(new_bboxes):
-                coord = tuple(bb['bbox'])
-                coord2new_idxs.setdefault(coord, []).append(idx)
+
+            # 2. Build corefs (rebuild via original-index -> new-index map; skip gracefully on dropped boxes)
             new_corefs = []
             for group in orig_corefs:
                 # Assume group = [mol_idx, idt_idx] or [mol_idx1, mol_idx2, ..., idt_idx]
                 label_idx = group[-1]
-                label_coord = tuple(orig_bboxes[label_idx]['bbox'])
-                new_label_idx = coord2new_idxs[label_coord][-1]  # label has only one
+                label_new_list = orig2new.get(label_idx, [])
+                if not label_new_list:
+                    continue
+                new_label_idx = label_new_list[-1]  # label has only one
                 # All expanded new indices of mols
                 for mol_idx in group[:-1]:
-                    mol_coord = tuple(orig_bboxes[mol_idx]['bbox'])
-                    for new_mol_idx in coord2new_idxs[mol_coord]:
+                    for new_mol_idx in orig2new.get(mol_idx, []):
                         new_corefs.append([new_mol_idx, new_label_idx])
             # 3. Assemble structure
             new_item = copy.deepcopy(item2)
