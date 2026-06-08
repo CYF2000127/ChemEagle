@@ -92,7 +92,7 @@ image_path = './examples/1.png'
 results = ChemEagle(image_path)
 print(results)
 ```
-Also can run on the colab, we provided a code (here)[https://colab.research.google.com/drive/1pOrBPm_QYgZgeKIDbGULGjsyTuOx5nfD#scrollTo=s-7RdEIbAkvr]
+Also can run on the colab, we provided a code [here](https://colab.research.google.com/drive/1pOrBPm_QYgZgeKIDbGULGjsyTuOx5nfD#scrollTo=s-7RdEIbAkvr)
 
 6. Alternatively, run the following code to extract machine-readable chemical data from chemical literature (PDF files) directly:
 ```python
