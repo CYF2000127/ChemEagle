@@ -797,7 +797,11 @@ def get_reaction(image_path: str) -> dict:
     Returns a structured dictionary of reactions extracted from the image,
     """
     # Reuse cached raw_results
-    raw_pred = get_cached_raw_results(image_path)[0]
+    raw_results = get_cached_raw_results(image_path)
+    if not raw_results:
+        # No reaction detected: return an empty result instead of an IndexError.
+        return {}
+    raw_pred = raw_results[0]
     return get_reaction_from_raw(raw_pred)
 
 ############################### Rxn_OS
@@ -820,7 +824,11 @@ def get_reaction_OS(image_path: str) -> dict:
     Returns a structured dictionary of reactions extracted from the image,
     """
     # Reuse cached raw_results
-    raw_pred = get_cached_raw_results_OS(image_path)[0]
+    raw_results = get_cached_raw_results_OS(image_path)
+    if not raw_results:
+        # No reaction detected: return an empty result instead of an IndexError.
+        return {}
+    raw_pred = raw_results[0]
     return get_reaction_from_raw(raw_pred)
 
 
@@ -1163,7 +1171,8 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
     }
 
     # Step 2: Handle multiple tool calls
-    tool_calls = response.choices[0].message.tool_calls
+    tool_calls = response.choices[0].message.tool_calls or []
+
     results = []
 
     # Iterate through each tool call
@@ -1172,13 +1181,20 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
         tool_arguments = tool_call.function.arguments
         tool_call_id = tool_call.id
         
-        tool_args = json.loads(tool_arguments)
+        try:
+            tool_args = json.loads(tool_arguments)
+        except (json.JSONDecodeError, TypeError):
+            # Malformed tool arguments: image_path is used directly below, default to {}.
+            tool_args = {}
         
         if tool_name in TOOL_MAP:
             # Call tool and get result
             tool_result = TOOL_MAP[tool_name](image_path)
+            print(f"[DEBUG mol_agent] TOOL {tool_name} -> {tool_result}")
         else:
-            raise ValueError(f"Unknown tool called: {tool_name}")
+            # Unknown tool name (e.g. VLM drift): skip rather than crash the pipeline.
+            print(f"WARNING [mol_agent]: Unknown tool called: {tool_name}, skipping.")
+            continue
         
         # Save each tool-call result
         results.append({
@@ -1247,7 +1263,8 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
     # reaction_results = model.extract_reactions_from_figures([image_np])
     #reaction_results = get_reaction_withatoms_correctR(image_path)[0]
     raw_results  = get_cached_raw_results(image_path)
-    reaction_results = raw_results[0]
+    # No reaction detected: fall back to an empty reaction instead of an IndexError.
+    reaction_results = raw_results[0] if raw_results else {}
     
     reaction = {
     "reactants": reaction_results.get('reactants', []),
@@ -1279,7 +1296,9 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
 
 # Get results
     smiles_details = extract_smiles_details(gpt_output, coref_results)
-    #print('smiles_details:', smiles_details)
+    print(f"[DEBUG mol_agent] smiles_details keys: {list(smiles_details.keys())}")
+    print(f"[DEBUG mol_agent] coref_results[0] smiles list: {[b.get('smiles') for it in coref_results for b in it.get('bboxes', [])]}")
+    print(f"[DEBUG mol_agent] reaction_results raw: {reaction_results}")
 
     reactants_array = []
     products = []
@@ -1300,10 +1319,12 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
 
         # Organize reaction data
     backed_out = utils.backout_without_coref(reaction_results, coref_results, gpt_output, smiles_details, model.molnextr)
+    print(f"[DEBUG mol_agent] backed_out (before sort) = {backed_out}")
     backed_out.sort(key=lambda x: x[2])
     extracted_rxns = {}
     for reactants, products_, label in backed_out:
         extracted_rxns[label] = {'reactants': reactants, 'products': products_}
+    print(f"[DEBUG mol_agent] extracted_rxns = {extracted_rxns}")
     
     for item in coref_results:
         for bbox in item.get("bboxes", []):
@@ -1333,7 +1354,7 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
 def process_reaction_image_with_product_variant_R_group_OS(
     image_path: str,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
     base_url: Optional[str] = "http://localhost:8000/v1",
     api_key: Optional[str] = None,
 ) -> dict:
@@ -1467,13 +1488,19 @@ def process_reaction_image_with_product_variant_R_group_OS(
         tool_arguments = tool_call.function.arguments
         tool_call_id = tool_call.id
         
-        tool_args = json.loads(tool_arguments)
+        try:
+            tool_args = json.loads(tool_arguments)
+        except (json.JSONDecodeError, TypeError):
+            # Malformed tool arguments: image_path is used directly below, default to {}.
+            tool_args = {}
         
         if tool_name in TOOL_MAP:
             # Call tool and get result
             tool_result = TOOL_MAP[tool_name](image_path)
         else:
-            raise ValueError(f"Unknown tool called: {tool_name}")
+            # Unknown tool name (e.g. VLM drift): skip rather than crash the pipeline.
+            print(f"WARNING [mol_agent]: Unknown tool called: {tool_name}, skipping.")
+            continue
         
         # Save each tool-call result
         results.append({
@@ -1564,7 +1591,8 @@ def process_reaction_image_with_product_variant_R_group_OS(
     # Use OS-version caching function
     coref_results = get_cached_multi_molecular_OS(image_path)
     raw_results = get_cached_raw_results_OS(image_path)
-    reaction_results = raw_results[0]
+    # No reaction detected: fall back to an empty reaction instead of an IndexError.
+    reaction_results = raw_results[0] if raw_results else {}
     
     reaction = {
         "reactants": reaction_results.get('reactants', []),
@@ -1700,19 +1728,28 @@ def process_reaction_image_with_table_R_group(image_path: str) -> dict:
     )
 
     
-    tool_call = response.choices[0].message.tool_calls[0]
+    tool_calls = response.choices[0].message.tool_calls or []
+    if not tool_calls:
+        # No tool call returned: fall back to the only available tool.
+        return get_full_reaction(image_path)
+    tool_call = tool_calls[0]
     tool_name = tool_call.function.name  # modify here
     tool_arguments = tool_call.function.arguments  # newly added here
     tool_call_id = tool_call.id
 
-    tool_args = json.loads(tool_arguments)
+    try:
+        tool_args = json.loads(tool_arguments)
+    except (json.JSONDecodeError, TypeError):
+        tool_args = {}
     #image_path = tool_args.get('image_path', image_path)  # Use image_path provided by model
 
     if tool_name == 'get_full_reaction':
         tool_result = get_full_reaction(image_path)
 
     else:
-        raise ValueError(f"Unknown tool called: {tool_name}")
+        # Unknown tool name: fall back to the only available tool instead of crashing.
+        print(f"WARNING [full_reaction agent]: Unknown tool called: {tool_name}, using get_full_reaction.")
+        tool_result = get_full_reaction(image_path)
     #print(tool_result)
 
     # Build tool-call result message
@@ -1879,7 +1916,7 @@ def process_reaction_image_with_table_R_group(image_path: str) -> dict:
 def process_reaction_image_with_table_R_group_OS(
     image_path: str,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct",
+    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
     base_url: Optional[str] = "http://localhost:8000/v1",
     api_key: Optional[str] = None,
 
@@ -1966,19 +2003,25 @@ def process_reaction_image_with_table_R_group_OS(
 
     tool_calls = response.choices[0].message.tool_calls or []
     if not tool_calls:
-        raise ValueError("No tool calls returned from model")
+        # No tool call returned: fall back to the only available tool.
+        return get_full_reaction_OS(image_path)
     
     tool_call = tool_calls[0]
     tool_name = tool_call.function.name
     tool_arguments = tool_call.function.arguments
     tool_call_id = tool_call.id
 
-    tool_args = json.loads(tool_arguments)
+    try:
+        tool_args = json.loads(tool_arguments)
+    except (json.JSONDecodeError, TypeError):
+        tool_args = {}
 
     if tool_name == 'get_full_reaction_OS':
         tool_result = get_full_reaction_OS(image_path)
     else:
-        raise ValueError(f"Unknown tool called: {tool_name}")
+        # Unknown tool name: fall back to the only available tool instead of crashing.
+        print(f"WARNING [full_reaction agent OS]: Unknown tool called: {tool_name}, using get_full_reaction_OS.")
+        tool_result = get_full_reaction_OS(image_path)
 
     # Build tool-call result message
     function_call_result_message = {
