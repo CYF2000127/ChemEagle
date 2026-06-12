@@ -167,6 +167,8 @@ pip install -r requirements.txt
 
 **For Linux:**
 ```
+conda create -n vllm_env python=3.10
+conda activate vllm_env
 pip install vllm
 vllm serve /path/to/Qwen3-VL-32B-Instruct \
     --port 8000 \
@@ -175,6 +177,7 @@ vllm serve /path/to/Qwen3-VL-32B-Instruct \
     --tool-call-parser hermes \
     --max-model-len 64000 \
     --limit-mm-per-prompt video=0
+conda activate chemeagle
 ```
 
 **For Windows (PowerShell):**
