@@ -15,7 +15,7 @@ from get_reaction_agent import get_reaction_withatoms_correctR
 from get_R_group_sub_agent import process_reaction_image_with_table_R_group, process_reaction_image_with_product_variant_R_group,get_full_reaction_template_OS,get_full_reaction_template, get_multi_molecular_full,get_multi_molecular_full_OS, process_reaction_image_with_table_R_group_OS,process_reaction_image_with_product_variant_R_group_OS,get_full_reaction_OS,get_reaction_OS
 from get_observer import action_observer_agent, plan_observer_agent,action_observer_agent_OS, plan_observer_agent_OS
 from get_text_agent import text_extraction_agent, text_extraction_agent_OS
-from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _select_main_area, _has_text_extraction, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data
+from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _select_main_area, _has_text_extraction, _resolve_ordered_tools, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = ChemIEToolkit(device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')) 
@@ -208,9 +208,11 @@ def ChemEagle(
                 if reason:
                     print(f"[D] Plan observer reason: {reason}")
     
-    agent_names_lower = [agent.lower() for agent in agent_list]
-    selected_area = _select_main_area(agent_names_lower)   
-    
+    # Resolve the planner's ordered agent list into an executable tool sequence
+    # (order-preserving dedup + composite-tool mutual exclusion; see helper).
+    ordered_tools, has_text_extraction = _resolve_ordered_tools(agent_list)
+    print(f"[D] Ordered tools (planner order): {ordered_tools}")
+
     AREA_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group,
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group,
@@ -218,35 +220,41 @@ def ChemEagle(
         'get_multi_molecular_full': get_multi_molecular_full,
         'text_extraction_agent': text_extraction_agent
     }
-    
-    has_text_extraction = _has_text_extraction(agent_names_lower)
 
-    main_area_result = AREA_MAP[selected_area](image_path=image_path)
-    execution_logs = [{
-        "id": "tool_call_0",
-        "name": selected_area,
-        "arguments": {"image_path": image_path},
-        "result": main_area_result,
-    }]
-    results = [{
-        'role': 'tool',
-        'content': json.dumps({
-            'image_path': image_path,
-            selected_area: main_area_result,
-        }),
-        'tool_call_id': "tool_call_0",
-    }]
+    execution_logs = []
+    results = []
+    main_area_result = None
+    for idx, tool_name in enumerate(ordered_tools):
+        print(f"[D] Executing tool {idx + 1}/{len(ordered_tools)}: {tool_name}")
+        tool_result = AREA_MAP[tool_name](image_path=image_path)
+        if main_area_result is None:
+            main_area_result = tool_result
+        execution_logs.append({
+            "id": f"tool_call_{idx}",
+            "name": tool_name,
+            "arguments": {"image_path": image_path},
+            "result": tool_result,
+        })
+        results.append({
+            'role': 'tool',
+            'content': json.dumps({
+                'image_path': image_path,
+                tool_name: tool_result,
+            }),
+            'tool_call_id': f"tool_call_{idx}",
+        })
 
     observer_reason = ""
     if use_action_observer:
         observer_result = action_observer_agent(image_path, execution_logs)
-        if observer_result.get("redo"):
+        if observer_result.get("redo") and execution_logs:
             observer_reason = observer_result.get("reason", "")
             print(f"[D] Action observer requested redo: {observer_reason}")
-            main_area_result = AREA_MAP[selected_area](image_path=image_path)
+            retry_tool = execution_logs[0]["name"]
+            main_area_result = AREA_MAP[retry_tool](image_path=image_path)
             execution_logs[0] = {
                 "id": "retry_call_0",
-                "name": selected_area,
+                "name": retry_tool,
                 "arguments": {"image_path": image_path},
                 "result": main_area_result,
             }
@@ -254,7 +262,7 @@ def ChemEagle(
                 'role': 'tool',
                 'content': json.dumps({
                     'image_path': image_path,
-                    selected_area: main_area_result,
+                    retry_tool: main_area_result,
                 }),
                 'tool_call_id': "retry_call_0",
             }
@@ -267,19 +275,20 @@ def ChemEagle(
             graphical_input=main_area_result,
         )
 
-    tool_call_id = results[0]['tool_call_id']
+    # One tool_call entry per executed tool, ids paired with the tool messages.
     assistant_message = {
         "role": "assistant",
         "content": None,
         "tool_calls": [
             {
-                "id": tool_call_id,
+                "id": res['tool_call_id'],
                 "type": "function",
                 "function": {
-                    "name": selected_area,
+                    "name": log["name"],
                     "arguments": json.dumps({"image_path": image_path}),
                 },
             }
+            for log, res in zip(execution_logs, results)
         ],
     }
 
@@ -422,9 +431,11 @@ def ChemEagle_OS(
                 if reason:
                     print(f"[OS_D] Plan observer reason: {reason}")
     
-    agent_names_lower = [agent.lower() for agent in agent_list]
-    selected_area = _select_main_area(agent_names_lower)
-    
+    # Resolve the planner's ordered agent list into an executable tool sequence
+    # (order-preserving dedup + composite-tool mutual exclusion; see helper).
+    ordered_tools, has_text_extraction = _resolve_ordered_tools(agent_list)
+    print(f"[OS_D] Ordered tools (planner order): {ordered_tools}")
+
     AREA_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group_OS,
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group_OS,
@@ -432,61 +443,65 @@ def ChemEagle_OS(
         'get_multi_molecular_full': get_multi_molecular_full_OS,
         'text_extraction_agent': text_extraction_agent_OS
     }
-    
-    has_text_extraction = _has_text_extraction(agent_names_lower)
 
     OS_TOOLS_ACCEPT_BASE_D = (
         "process_reaction_image_with_product_variant_R_group",
         "process_reaction_image_with_table_R_group",
     )
 
-    main_area_args = {"image_path": image_path}
-    if selected_area in OS_TOOLS_ACCEPT_BASE_D:
-        main_area_args["base_url"] = base_url
-        main_area_args["api_key"] = api_key
-    main_area_result = AREA_MAP[selected_area](**main_area_args)
+    def _os_tool_args(tool_name: str) -> dict:
+        args = {"image_path": image_path}
+        if tool_name in OS_TOOLS_ACCEPT_BASE_D:
+            args["base_url"] = base_url
+            args["api_key"] = api_key
+        return args
 
-    execution_logs = [{
-        "id": "tool_call_0",
-        "name": selected_area,
-        "arguments": {"image_path": image_path},
-        "result": main_area_result,
-    }]
-    results = [{
-        'role': 'tool',
-        'name': selected_area,
-        'content': json.dumps({
-            'image_path': image_path,
-            selected_area: main_area_result,
-        }),
-        'tool_call_id': "tool_call_0",
-    }]
+    execution_logs = []
+    results = []
+    main_area_result = None
+    for idx, tool_name in enumerate(ordered_tools):
+        print(f"[OS_D] Executing tool {idx + 1}/{len(ordered_tools)}: {tool_name}")
+        tool_result = AREA_MAP[tool_name](**_os_tool_args(tool_name))
+        if main_area_result is None:
+            main_area_result = tool_result
+        execution_logs.append({
+            "id": f"tool_call_{idx}",
+            "name": tool_name,
+            "arguments": {"image_path": image_path},
+            "result": tool_result,
+        })
+        results.append({
+            'role': 'tool',
+            'name': tool_name,
+            'content': json.dumps({
+                'image_path': image_path,
+                tool_name: tool_result,
+            }),
+            'tool_call_id': f"tool_call_{idx}",
+        })
 
     print(f'[OS_D] results: {results}')
 
     observer_reason = ""
     if use_action_observer:
         observer_result = action_observer_agent_OS(image_path, execution_logs, model_name=model_name, base_url=base_url, api_key=api_key)
-        if observer_result.get("redo"):
+        if observer_result.get("redo") and execution_logs:
             observer_reason = observer_result.get("reason", "")
             print(f"[OS_D] Action observer requested redo: {observer_reason}")
-            retry_args = {"image_path": image_path}
-            if selected_area in OS_TOOLS_ACCEPT_BASE_D:
-                retry_args["base_url"] = base_url
-                retry_args["api_key"] = api_key
-            main_area_result = AREA_MAP[selected_area](**retry_args)
+            retry_tool = execution_logs[0]["name"]
+            main_area_result = AREA_MAP[retry_tool](**_os_tool_args(retry_tool))
             execution_logs[0] = {
                 "id": "retry_call_0",
-                "name": selected_area,
+                "name": retry_tool,
                 "arguments": {"image_path": image_path},
                 "result": main_area_result,
             }
             results[0] = {
                 'role': 'tool',
-                'name': selected_area,
+                'name': retry_tool,
                 'content': json.dumps({
                     'image_path': image_path,
-                    selected_area: main_area_result,
+                    retry_tool: main_area_result,
                 }),
                 'tool_call_id': "retry_call_0",
             }
@@ -501,19 +516,20 @@ def ChemEagle_OS(
             api_key=api_key,
         )
 
-    tool_call_id = results[0]['tool_call_id']
+    # One tool_call entry per executed tool, ids paired with the tool messages.
     assistant_message = {
         "role": "assistant",
         "content": None,
         "tool_calls": [
             {
-                "id": tool_call_id,
+                "id": res['tool_call_id'],
                 "type": "function",
                 "function": {
-                    "name": selected_area,
+                    "name": log["name"],
                     "arguments": json.dumps({"image_path": image_path}),
                 },
             }
+            for log, res in zip(execution_logs, results)
         ],
     }
 

@@ -883,6 +883,61 @@ def _has_text_extraction(agent_names_lower: List[str]) -> bool:
                for a in agent_names_lower)
 
 
+def _resolve_ordered_tools(agent_list: List[str]):
+    """Resolve the planner's ordered agent list into an ordered, deduplicated
+    list of executable tool names, preserving the planner's execution order.
+
+    Rules:
+    - Order-preserving dedup by resolved tool name.
+    - Agents with no standalone tool mapping (e.g. the condition interpretation
+      agent, whose work is performed inside the composite parsing tools) are
+      skipped.
+    - Mutual exclusion: the two R-group tools are composite (they already
+      perform reaction template parsing internally), so
+      'get_full_reaction_template' is dropped whenever an R-group tool is
+      selected, to avoid extracting the same reactions twice.
+    - 'text_extraction_agent' is split out and reported via the boolean flag:
+      it consumes the first main tool's result as graphical_input, so it must
+      always run after the main sequence regardless of its planner position.
+    - Falls back to ['get_full_reaction_template'] when nothing resolves
+      (same behaviour as the legacy priority-based selection).
+
+    Returns:
+        (ordered_main_tools, has_text_extraction)
+    """
+    ordered = []
+    for agent in agent_list:
+        name_lower = str(agent).lower().strip()
+        tool = None
+        for key, mapped in AGENT_NAME_TO_TOOL.items():
+            if key in name_lower:
+                tool = mapped
+                break
+        if tool is None:
+            # tolerate tool-style names such as 'get_full_reaction_template'
+            normalized = name_lower.replace(' ', '_')
+            for mapped in AGENT_NAME_TO_TOOL.values():
+                if mapped in normalized:
+                    tool = mapped
+                    break
+        if tool and tool not in ordered:
+            ordered.append(tool)
+
+    has_text_extraction = "text_extraction_agent" in ordered
+    ordered = [t for t in ordered if t != "text_extraction_agent"]
+
+    rgroup_tools = {
+        "process_reaction_image_with_product_variant_R_group",
+        "process_reaction_image_with_table_R_group",
+    }
+    if rgroup_tools & set(ordered):
+        ordered = [t for t in ordered if t != "get_full_reaction_template"]
+
+    if not ordered:
+        ordered = ["get_full_reaction_template"]
+    return ordered, has_text_extraction
+
+
 
 def _is_wildcard_symbol(sym):
     if not isinstance(sym, str):
