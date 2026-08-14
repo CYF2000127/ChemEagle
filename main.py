@@ -15,7 +15,7 @@ from get_reaction_agent import get_reaction_withatoms_correctR, get_reaction_con
 from get_R_group_sub_agent import process_reaction_image_with_table_R_group, process_reaction_image_with_product_variant_R_group,get_full_reaction_template_OS,get_full_reaction_template, get_multi_molecular_full,get_multi_molecular_full_OS, process_reaction_image_with_table_R_group_OS,process_reaction_image_with_product_variant_R_group_OS,get_full_reaction_OS,get_reaction_OS
 from get_observer import action_observer_agent, plan_observer_agent,action_observer_agent_OS, plan_observer_agent_OS
 from get_text_agent import text_extraction_agent, text_extraction_agent_OS
-from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _resolve_ordered_tools, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data
+from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _resolve_ordered_agents, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = ChemIEToolkit(device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')) 
@@ -28,7 +28,7 @@ if not API_KEY:
 AZURE_ENDPOINT = os.getenv("AZURE_ENDPOINT")
 API_VERSION = os.getenv("API_VERSION")
 
-def _normalize_tool_args(raw_args: Optional[dict], image_path: str) -> dict:
+def _normalize_agent_args(raw_args: Optional[dict], image_path: str) -> dict:
     if not isinstance(raw_args, dict):
         return {"image_path": image_path}
     normalized = dict(raw_args)
@@ -46,12 +46,12 @@ def ChemEagle(
 ) -> dict:
     """
     Given a chemical reaction image path, extract reaction information
-    using GPT models and tools, and return structured reaction data.
+    using GPT models and specialized agents, and return structured reaction data.
     Supports plan observer and action observer. Default set to False to save token and time.
 
     Args:
         image_path (str): Path to the image file.
-        use_plan_observer (bool): Whether to use plan observer to review the tool call plan.
+        use_plan_observer (bool): Whether to use plan observer to review the agent call plan.
         use_action_observer (bool): Whether to use action observer to check execution results.
 
     Returns:
@@ -69,7 +69,10 @@ def ChemEagle(
 
     base64_image = encode_image(image_path)
 
-    tools = [
+    # Reference schemas for the callable agents (kept for documentation and
+    # potential function-calling use; execution is driven by the planner via
+    # _resolve_ordered_agents rather than by LLM tool-calling).
+    agent_specs = [
         {
         'type': 'function',
         'function': {
@@ -110,7 +113,7 @@ def ChemEagle(
         'type': 'function',
         'function': {
             'name': 'get_full_reaction_template',
-            'description': 'After you carefully check the image, if this is a reaction image that contains only a text-based table and does not involve any R-group replacement, or this is a reaction image does not contain any tables or sets of product variants, then just call this simplified tool.',
+            'description': 'After you carefully check the image, if this is a reaction image that contains only a text-based table and does not involve any R-group replacement, or this is a reaction image does not contain any tables or sets of product variants, then just call this simplified agent.',
             'parameters': {
                 'type': 'object',
                 'properties': {
@@ -128,7 +131,7 @@ def ChemEagle(
         'type': 'function',
         'function': {
             'name': 'get_multi_molecular_full',
-            'description': 'After you carefully check the image, if this is a single molecule image or a multiple molecules image, then need to call this molecular recognition tool.',
+            'description': 'After you carefully check the image, if this is a single molecule image or a multiple molecules image, then need to call this molecular recognition agent.',
             'parameters': {
                 'type': 'object',
                 'properties': {
@@ -142,6 +145,24 @@ def ChemEagle(
             },
         },
             },
+        {
+        'type': 'function',
+        'function': {
+            'name': 'get_reaction_con',
+            'description': 'Extract and normalize the reaction conditions (catalysts, reagents, solvent, temperature, time, atmosphere, etc.) from the graphic. Call this condition interpretation agent when the image contains explicit reaction conditions but no R-group tables or sets of product variants (the R-group agents already interpret conditions internally).',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'image_path': {
+                        'type': 'string',
+                        'description': 'The path to the reaction image.',
+                    },
+                },
+                'required': ['image_path'],
+                'additionalProperties': False,
+            },
+        },
+        },
         {
         'type': 'function',
         'function': {
@@ -208,12 +229,12 @@ def ChemEagle(
                 if reason:
                     print(f"[D] Plan observer reason: {reason}")
     
-    # Resolve the planner's ordered agent list into an executable tool sequence
-    # (order-preserving dedup + composite-tool mutual exclusion; see helper).
-    ordered_tools, has_text_extraction = _resolve_ordered_tools(agent_list)
-    print(f"[D] Ordered tools (planner order): {ordered_tools}")
+    # Resolve the planner's ordered agent list into an executable agent sequence
+    # (order-preserving dedup + composite-agent mutual exclusion; see helper).
+    ordered_agents, has_text_extraction = _resolve_ordered_agents(agent_list)
+    print(f"[D] Ordered agents (planner order): {ordered_agents}")
 
-    AREA_MAP = {
+    AGENT_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group,
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group,
         'get_full_reaction_template': get_full_reaction_template,
@@ -225,24 +246,24 @@ def ChemEagle(
     execution_logs = []
     results = []
     main_area_result = None
-    for idx, tool_name in enumerate(ordered_tools):
-        print(f"[D] Executing tool {idx + 1}/{len(ordered_tools)}: {tool_name}")
-        tool_result = AREA_MAP[tool_name](image_path=image_path)
+    for idx, agent_name in enumerate(ordered_agents):
+        print(f"[D] Executing agent {idx + 1}/{len(ordered_agents)}: {agent_name}")
+        agent_result = AGENT_MAP[agent_name](image_path=image_path)
         if main_area_result is None:
-            main_area_result = tool_result
+            main_area_result = agent_result
         execution_logs.append({
-            "id": f"tool_call_{idx}",
-            "name": tool_name,
+            "id": f"agent_call_{idx}",
+            "name": agent_name,
             "arguments": {"image_path": image_path},
-            "result": tool_result,
+            "result": agent_result,
         })
         results.append({
             'role': 'tool',
             'content': json.dumps({
                 'image_path': image_path,
-                tool_name: tool_result,
+                agent_name: agent_result,
             }),
-            'tool_call_id': f"tool_call_{idx}",
+            'tool_call_id': f"agent_call_{idx}",
         })
 
     observer_reason = ""
@@ -251,11 +272,11 @@ def ChemEagle(
         if observer_result.get("redo") and execution_logs:
             observer_reason = observer_result.get("reason", "")
             print(f"[D] Action observer requested redo: {observer_reason}")
-            retry_tool = execution_logs[0]["name"]
-            main_area_result = AREA_MAP[retry_tool](image_path=image_path)
+            retry_agent = execution_logs[0]["name"]
+            main_area_result = AGENT_MAP[retry_agent](image_path=image_path)
             execution_logs[0] = {
                 "id": "retry_call_0",
-                "name": retry_tool,
+                "name": retry_agent,
                 "arguments": {"image_path": image_path},
                 "result": main_area_result,
             }
@@ -263,7 +284,7 @@ def ChemEagle(
                 'role': 'tool',
                 'content': json.dumps({
                     'image_path': image_path,
-                    retry_tool: main_area_result,
+                    retry_agent: main_area_result,
                 }),
                 'tool_call_id': "retry_call_0",
             }
@@ -276,7 +297,8 @@ def ChemEagle(
             graphical_input=main_area_result,
         )
 
-    # One tool_call entry per executed tool, ids paired with the tool messages.
+    # One tool_call entry per executed agent, ids paired with the tool messages
+    # (tool_calls / tool_call_id / role="tool" are OpenAI protocol keys).
     assistant_message = {
         "role": "assistant",
         "content": None,
@@ -432,12 +454,12 @@ def ChemEagle_OS(
                 if reason:
                     print(f"[OS_D] Plan observer reason: {reason}")
     
-    # Resolve the planner's ordered agent list into an executable tool sequence
-    # (order-preserving dedup + composite-tool mutual exclusion; see helper).
-    ordered_tools, has_text_extraction = _resolve_ordered_tools(agent_list)
-    print(f"[OS_D] Ordered tools (planner order): {ordered_tools}")
+    # Resolve the planner's ordered agent list into an executable agent sequence
+    # (order-preserving dedup + composite-agent mutual exclusion; see helper).
+    ordered_agents, has_text_extraction = _resolve_ordered_agents(agent_list)
+    print(f"[OS_D] Ordered agents (planner order): {ordered_agents}")
 
-    AREA_MAP = {
+    AGENT_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group_OS,
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group_OS,
         'get_full_reaction_template': get_full_reaction_template_OS,
@@ -446,15 +468,15 @@ def ChemEagle_OS(
         'text_extraction_agent': text_extraction_agent_OS
     }
 
-    OS_TOOLS_ACCEPT_BASE_D = (
+    OS_AGENTS_ACCEPT_BASE_D = (
         "process_reaction_image_with_product_variant_R_group",
         "process_reaction_image_with_table_R_group",
         "get_reaction_con",
     )
 
-    def _os_tool_args(tool_name: str) -> dict:
+    def _os_agent_args(agent_name: str) -> dict:
         args = {"image_path": image_path}
-        if tool_name in OS_TOOLS_ACCEPT_BASE_D:
+        if agent_name in OS_AGENTS_ACCEPT_BASE_D:
             args["base_url"] = base_url
             args["api_key"] = api_key
         return args
@@ -462,25 +484,25 @@ def ChemEagle_OS(
     execution_logs = []
     results = []
     main_area_result = None
-    for idx, tool_name in enumerate(ordered_tools):
-        print(f"[OS_D] Executing tool {idx + 1}/{len(ordered_tools)}: {tool_name}")
-        tool_result = AREA_MAP[tool_name](**_os_tool_args(tool_name))
+    for idx, agent_name in enumerate(ordered_agents):
+        print(f"[OS_D] Executing agent {idx + 1}/{len(ordered_agents)}: {agent_name}")
+        agent_result = AGENT_MAP[agent_name](**_os_agent_args(agent_name))
         if main_area_result is None:
-            main_area_result = tool_result
+            main_area_result = agent_result
         execution_logs.append({
-            "id": f"tool_call_{idx}",
-            "name": tool_name,
+            "id": f"agent_call_{idx}",
+            "name": agent_name,
             "arguments": {"image_path": image_path},
-            "result": tool_result,
+            "result": agent_result,
         })
         results.append({
             'role': 'tool',
-            'name': tool_name,
+            'name': agent_name,
             'content': json.dumps({
                 'image_path': image_path,
-                tool_name: tool_result,
+                agent_name: agent_result,
             }),
-            'tool_call_id': f"tool_call_{idx}",
+            'tool_call_id': f"agent_call_{idx}",
         })
 
     print(f'[OS_D] results: {results}')
@@ -491,20 +513,20 @@ def ChemEagle_OS(
         if observer_result.get("redo") and execution_logs:
             observer_reason = observer_result.get("reason", "")
             print(f"[OS_D] Action observer requested redo: {observer_reason}")
-            retry_tool = execution_logs[0]["name"]
-            main_area_result = AREA_MAP[retry_tool](**_os_tool_args(retry_tool))
+            retry_agent = execution_logs[0]["name"]
+            main_area_result = AGENT_MAP[retry_agent](**_os_agent_args(retry_agent))
             execution_logs[0] = {
                 "id": "retry_call_0",
-                "name": retry_tool,
+                "name": retry_agent,
                 "arguments": {"image_path": image_path},
                 "result": main_area_result,
             }
             results[0] = {
                 'role': 'tool',
-                'name': retry_tool,
+                'name': retry_agent,
                 'content': json.dumps({
                     'image_path': image_path,
-                    retry_tool: main_area_result,
+                    retry_agent: main_area_result,
                 }),
                 'tool_call_id': "retry_call_0",
             }
@@ -519,7 +541,8 @@ def ChemEagle_OS(
             api_key=api_key,
         )
 
-    # One tool_call entry per executed tool, ids paired with the tool messages.
+    # One tool_call entry per executed agent, ids paired with the tool messages
+    # (tool_calls / tool_call_id / role="tool" are OpenAI protocol keys).
     assistant_message = {
         "role": "assistant",
         "content": None,
@@ -597,23 +620,23 @@ def ChemEagle_OS(
         else:
             print(f"ERROR [OS_D]: Failed to parse JSON from model response")
             print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
-            print("WARNING [OS_D]: Returning tool results as fallback")
-            tool_results_dict = {}
+            print("WARNING [OS_D]: Returning agent results as fallback")
+            agent_results_dict = {}
             for log in execution_logs:
                 t_name = log.get("name")
                 t_result = log.get("result")
                 if t_name and t_name != "text_extraction_agent" and t_result is not None:
-                    tool_results_dict[t_name] = t_result
-            if len(tool_results_dict) == 1:
-                single_result = list(tool_results_dict.values())[0]
+                    agent_results_dict[t_name] = t_result
+            if len(agent_results_dict) == 1:
+                single_result = list(agent_results_dict.values())[0]
                 if isinstance(single_result, dict):
                     if text_extraction_result is not None:
                         single_result["text_extraction"] = text_extraction_result
                     return single_result
             else:
                 if text_extraction_result is not None:
-                    tool_results_dict["text_extraction"] = text_extraction_result
-                return tool_results_dict
+                    agent_results_dict["text_extraction"] = text_extraction_result
+                return agent_results_dict
 
     if text_extraction_result is not None:
         if isinstance(text_extraction_result, dict) and "annotated_text" in text_extraction_result:

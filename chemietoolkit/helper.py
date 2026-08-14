@@ -863,9 +863,10 @@ def _parse_planner_output(raw_output: str) -> List[str]:
     return [a for a in agents if a]
 
 
-def _resolve_ordered_tools(agent_list: List[str]):
+def _resolve_ordered_agents(agent_list: List[str]):
     """Resolve the planner's ordered agent list into an ordered, deduplicated
-    list of executable tool names, preserving the planner's execution order.
+    list of executable agent function names, preserving the planner's
+    execution order.
 
     Rules:
     - Order-preserving dedup by resolved tool name.
