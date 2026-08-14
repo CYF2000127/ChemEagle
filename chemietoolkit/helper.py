@@ -844,6 +844,7 @@ AGENT_NAME_TO_TOOL = {
     "text-based r-group substitution agent": "process_reaction_image_with_table_R_group",
     "reaction template parsing agent": "get_full_reaction_template",
     "molecular recognition agent": "get_multi_molecular_full",
+    "condition interpretation agent": "get_reaction_con",
     "text extraction agent": "text_extraction_agent",
 }
 
@@ -862,40 +863,18 @@ def _parse_planner_output(raw_output: str) -> List[str]:
     return [a for a in agents if a]
 
 
-def _select_main_area(agent_names_lower: List[str]) -> str:
-    """Select the main area tool name from a list of agent names (substring match).
-    Priority: structure R-group > text R-group > reaction template > molecular recognition."""
-    priority = [
-        ("structure-based r-group substitution agent", "process_reaction_image_with_product_variant_R_group"),
-        ("text-based r-group substitution agent", "process_reaction_image_with_table_R_group"),
-        ("reaction template parsing agent", "get_full_reaction_template"),
-        ("molecular recognition agent", "get_multi_molecular_full"),
-    ]
-    for keyword, tool_name in priority:
-        if any(keyword in agent for agent in agent_names_lower):
-            return tool_name
-    return "get_full_reaction_template"
-
-
-def _has_text_extraction(agent_names_lower: List[str]) -> bool:
-    """Check if text extraction agent is in the agent list (substring match)."""
-    return any("text extraction agent" in a or "text_extraction_agent" in a
-               for a in agent_names_lower)
-
-
 def _resolve_ordered_tools(agent_list: List[str]):
     """Resolve the planner's ordered agent list into an ordered, deduplicated
     list of executable tool names, preserving the planner's execution order.
 
     Rules:
     - Order-preserving dedup by resolved tool name.
-    - Agents with no standalone tool mapping (e.g. the condition interpretation
-      agent, whose work is performed inside the composite parsing tools) are
-      skipped.
+    - Agents with no standalone tool mapping are skipped.
     - Mutual exclusion: the two R-group tools are composite (they already
-      perform reaction template parsing internally), so
-      'get_full_reaction_template' is dropped whenever an R-group tool is
-      selected, to avoid extracting the same reactions twice.
+      perform reaction template parsing and condition interpretation
+      internally), so both 'get_full_reaction_template' and 'get_reaction_con'
+      are dropped whenever an R-group tool is selected, to avoid extracting
+      the same reactions/conditions twice.
     - 'text_extraction_agent' is split out and reported via the boolean flag:
       it consumes the first main tool's result as graphical_input, so it must
       always run after the main sequence regardless of its planner position.
@@ -931,7 +910,8 @@ def _resolve_ordered_tools(agent_list: List[str]):
         "process_reaction_image_with_table_R_group",
     }
     if rgroup_tools & set(ordered):
-        ordered = [t for t in ordered if t != "get_full_reaction_template"]
+        ordered = [t for t in ordered
+                   if t not in ("get_full_reaction_template", "get_reaction_con")]
 
     if not ordered:
         ordered = ["get_full_reaction_template"]

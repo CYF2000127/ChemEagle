@@ -11,11 +11,11 @@ from rxnim import RxnIM
 import base64
 from typing import Optional, Dict, Any
 from get_molecular_agent import process_reaction_image_with_multiple_products_and_text_correctR, process_reaction_image_with_multiple_products_and_text_correctmultiR
-from get_reaction_agent import get_reaction_withatoms_correctR
+from get_reaction_agent import get_reaction_withatoms_correctR, get_reaction_con, get_reaction_con_OS
 from get_R_group_sub_agent import process_reaction_image_with_table_R_group, process_reaction_image_with_product_variant_R_group,get_full_reaction_template_OS,get_full_reaction_template, get_multi_molecular_full,get_multi_molecular_full_OS, process_reaction_image_with_table_R_group_OS,process_reaction_image_with_product_variant_R_group_OS,get_full_reaction_OS,get_reaction_OS
 from get_observer import action_observer_agent, plan_observer_agent,action_observer_agent_OS, plan_observer_agent_OS
 from get_text_agent import text_extraction_agent, text_extraction_agent_OS
-from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _select_main_area, _has_text_extraction, _resolve_ordered_tools, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data
+from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _resolve_ordered_tools, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = ChemIEToolkit(device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')) 
@@ -218,6 +218,7 @@ def ChemEagle(
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group,
         'get_full_reaction_template': get_full_reaction_template,
         'get_multi_molecular_full': get_multi_molecular_full,
+        'get_reaction_con': get_reaction_con,
         'text_extraction_agent': text_extraction_agent
     }
 
@@ -441,12 +442,14 @@ def ChemEagle_OS(
         'process_reaction_image_with_table_R_group': process_reaction_image_with_table_R_group_OS,
         'get_full_reaction_template': get_full_reaction_template_OS,
         'get_multi_molecular_full': get_multi_molecular_full_OS,
+        'get_reaction_con': get_reaction_con_OS,
         'text_extraction_agent': text_extraction_agent_OS
     }
 
     OS_TOOLS_ACCEPT_BASE_D = (
         "process_reaction_image_with_product_variant_R_group",
         "process_reaction_image_with_table_R_group",
+        "get_reaction_con",
     )
 
     def _os_tool_args(tool_name: str) -> dict:
