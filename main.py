@@ -18,6 +18,7 @@ from get_text_agent import text_extraction_agent, text_extraction_agent_OS
 from chemietoolkit.helper import _clean_agent_name, _parse_planner_output, _resolve_ordered_agents, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data
 
 
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = ChemIEToolkit(device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')) 
 ckpt_path = "./rxn.ckpt"
