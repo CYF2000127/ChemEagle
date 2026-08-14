@@ -247,9 +247,28 @@ def ChemEagle(
     execution_logs = []
     results = []
     main_area_result = None
+    observer_notes = []
+
+    def _observe_and_retry(observed_name, observed_result, rerun):
+        """Per-agent Action Observer check; at most one re-execution on redo.
+        The observer's diagnosis is collected and forwarded to the final
+        synthesis step."""
+        check = action_observer_agent(
+            image_path, [{"name": observed_name, "result": observed_result}])
+        if check.get("redo"):
+            reason = check.get("reason", "")
+            observer_notes.append(f"{observed_name}: {reason}" if reason else observed_name)
+            print(f"[D] Action observer requested redo for {observed_name}: {reason}")
+            observed_result = rerun()
+        return observed_result
+
     for idx, agent_name in enumerate(ordered_agents):
         print(f"[D] Executing agent {idx + 1}/{len(ordered_agents)}: {agent_name}")
         agent_result = AGENT_MAP[agent_name](image_path=image_path)
+        if use_action_observer:
+            agent_result = _observe_and_retry(
+                agent_name, agent_result,
+                lambda: AGENT_MAP[agent_name](image_path=image_path))
         if main_area_result is None:
             main_area_result = agent_result
         execution_logs.append({
@@ -267,28 +286,7 @@ def ChemEagle(
             'tool_call_id': f"agent_call_{idx}",
         })
 
-    observer_reason = ""
-    if use_action_observer:
-        observer_result = action_observer_agent(image_path, execution_logs)
-        if observer_result.get("redo") and execution_logs:
-            observer_reason = observer_result.get("reason", "")
-            print(f"[D] Action observer requested redo: {observer_reason}")
-            retry_agent = execution_logs[0]["name"]
-            main_area_result = AGENT_MAP[retry_agent](image_path=image_path)
-            execution_logs[0] = {
-                "id": "retry_call_0",
-                "name": retry_agent,
-                "arguments": {"image_path": image_path},
-                "result": main_area_result,
-            }
-            results[0] = {
-                'role': 'tool',
-                'content': json.dumps({
-                    'image_path': image_path,
-                    retry_agent: main_area_result,
-                }),
-                'tool_call_id': "retry_call_0",
-            }
+    observer_reason = "; ".join(observer_notes)
 
     text_extraction_result = None
     if has_text_extraction:
@@ -297,6 +295,12 @@ def ChemEagle(
             image_path=image_path,
             graphical_input=main_area_result,
         )
+        if use_action_observer and text_extraction_result is not None:
+            text_extraction_result = _observe_and_retry(
+                "text_extraction_agent", text_extraction_result,
+                lambda: text_extraction_agent(
+                    image_path=image_path, graphical_input=main_area_result))
+            observer_reason = "; ".join(observer_notes)
 
     # One tool_call entry per executed agent, ids paired with the tool messages
     # (tool_calls / tool_call_id / role="tool" are OpenAI protocol keys).
@@ -485,9 +489,29 @@ def ChemEagle_OS(
     execution_logs = []
     results = []
     main_area_result = None
+    observer_notes = []
+
+    def _observe_and_retry_os(observed_name, observed_result, rerun):
+        """Per-agent Action Observer check; at most one re-execution on redo.
+        The observer's diagnosis is collected and forwarded to the final
+        synthesis step."""
+        check = action_observer_agent_OS(
+            image_path, [{"name": observed_name, "result": observed_result}],
+            model_name=model_name, base_url=base_url, api_key=api_key)
+        if check.get("redo"):
+            reason = check.get("reason", "")
+            observer_notes.append(f"{observed_name}: {reason}" if reason else observed_name)
+            print(f"[OS_D] Action observer requested redo for {observed_name}: {reason}")
+            observed_result = rerun()
+        return observed_result
+
     for idx, agent_name in enumerate(ordered_agents):
         print(f"[OS_D] Executing agent {idx + 1}/{len(ordered_agents)}: {agent_name}")
         agent_result = AGENT_MAP[agent_name](**_os_agent_args(agent_name))
+        if use_action_observer:
+            agent_result = _observe_and_retry_os(
+                agent_name, agent_result,
+                lambda: AGENT_MAP[agent_name](**_os_agent_args(agent_name)))
         if main_area_result is None:
             main_area_result = agent_result
         execution_logs.append({
@@ -508,29 +532,7 @@ def ChemEagle_OS(
 
     print(f'[OS_D] results: {results}')
 
-    observer_reason = ""
-    if use_action_observer:
-        observer_result = action_observer_agent_OS(image_path, execution_logs, model_name=model_name, base_url=base_url, api_key=api_key)
-        if observer_result.get("redo") and execution_logs:
-            observer_reason = observer_result.get("reason", "")
-            print(f"[OS_D] Action observer requested redo: {observer_reason}")
-            retry_agent = execution_logs[0]["name"]
-            main_area_result = AGENT_MAP[retry_agent](**_os_agent_args(retry_agent))
-            execution_logs[0] = {
-                "id": "retry_call_0",
-                "name": retry_agent,
-                "arguments": {"image_path": image_path},
-                "result": main_area_result,
-            }
-            results[0] = {
-                'role': 'tool',
-                'name': retry_agent,
-                'content': json.dumps({
-                    'image_path': image_path,
-                    retry_agent: main_area_result,
-                }),
-                'tool_call_id': "retry_call_0",
-            }
+    observer_reason = "; ".join(observer_notes)
 
     text_extraction_result = None
     if has_text_extraction:
@@ -541,6 +543,13 @@ def ChemEagle_OS(
             base_url=base_url,
             api_key=api_key,
         )
+        if use_action_observer and text_extraction_result is not None:
+            text_extraction_result = _observe_and_retry_os(
+                "text_extraction_agent", text_extraction_result,
+                lambda: text_extraction_agent_OS(
+                    image_path=image_path, graphical_input=main_area_result,
+                    base_url=base_url, api_key=api_key))
+            observer_reason = "; ".join(observer_notes)
 
     # One tool_call entry per executed agent, ids paired with the tool messages
     # (tool_calls / tool_call_id / role="tool" are OpenAI protocol keys).
