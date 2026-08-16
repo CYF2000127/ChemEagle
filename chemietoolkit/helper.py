@@ -865,27 +865,6 @@ def _parse_planner_output(raw_output: str) -> List[str]:
 
 
 def _resolve_ordered_agents(agent_list: List[str]):
-    """Resolve the planner's ordered agent list into an ordered, deduplicated
-    list of executable agent function names, preserving the planner's
-    execution order.
-
-    Rules:
-    - Order-preserving dedup by resolved tool name.
-    - Agents with no standalone tool mapping are skipped.
-    - Mutual exclusion: the two R-group tools are composite (they already
-      perform reaction template parsing and condition interpretation
-      internally), so both 'get_full_reaction_template' and 'get_reaction_con'
-      are dropped whenever an R-group tool is selected, to avoid extracting
-      the same reactions/conditions twice.
-    - 'text_extraction_agent' is split out and reported via the boolean flag:
-      it consumes the first main tool's result as graphical_input, so it must
-      always run after the main sequence regardless of its planner position.
-    - Falls back to ['get_full_reaction_template'] when nothing resolves
-      (same behaviour as the legacy priority-based selection).
-
-    Returns:
-        (ordered_main_tools, has_text_extraction)
-    """
     ordered = []
     for agent in agent_list:
         name_lower = str(agent).lower().strip()
