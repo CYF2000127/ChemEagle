@@ -80,9 +80,46 @@ def fallback_validate_and_fix_smiles_in_dict(data: Dict[str, Any]) -> Dict[str, 
 # PubChem and override the agent's `smiles` field if a hit is returned. If the
 # lookup fails, the original agent output is kept.
 # ============================================================================
+import time as _time
 import urllib.error as _urlerr
 import urllib.parse as _urlparse
 import urllib.request as _urlreq
+
+
+class _ServiceUnavailable(Exception):
+    """A lookup service could not be reached, as opposed to answering that it
+    does not know the name. The distinction matters: a name the service does
+    not know is settled and worth caching, while an unreachable service leaves
+    the question open and must not poison the cache."""
+
+
+# PubChem asks for no more than 5 requests/second and answers 503 when a client
+# runs hot, so a retry that waits is also the polite thing to do.
+_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def _get_json_with_retry(url: str, timeout: float = 5.0,
+                         attempts: int = 3, base_delay: float = 1.0) -> Any:
+    """Fetch JSON, retrying transport failures and transient server codes with
+    exponential backoff. Raises _ServiceUnavailable once the attempts run out;
+    any other error propagates unchanged, since retrying will not help it."""
+    last: Optional[Exception] = None
+    for attempt in range(attempts):
+        try:
+            with _urlreq.urlopen(url, timeout=timeout) as resp:
+                return json.loads(resp.read().decode('utf-8'))
+        except _urlerr.HTTPError as exc:
+            if exc.code not in _RETRY_STATUS:
+                raise
+            last = exc
+        except (_urlerr.URLError, TimeoutError, OSError) as exc:
+            last = exc
+        if attempt < attempts - 1:
+            delay = base_delay * (2 ** attempt)
+            print(f"[PubChem] {last}; retrying in {delay:.0f}s "
+                  f"({attempt + 1}/{attempts - 1})")
+            _time.sleep(delay)
+    raise _ServiceUnavailable(str(last))
 
 _PUBCHEM_SMILES_CACHE: Dict[str, Optional[str]] = {}
 
@@ -466,8 +503,7 @@ def _query_pubchem_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
             "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/"
             f"{encoded}/cids/JSON"
         )
-        with _urlreq.urlopen(url_cids, timeout=timeout) as resp:
-            cid_payload = json.loads(resp.read().decode('utf-8'))
+        cid_payload = _get_json_with_retry(url_cids, timeout=timeout)
         cids = cid_payload.get('IdentifierList', {}).get('CID', []) or []
         cid = cids[0] if cids else None
         if not cid:
@@ -479,8 +515,7 @@ def _query_pubchem_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
             "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/"
             f"{cid}/synonyms/JSON"
         )
-        with _urlreq.urlopen(url_syn, timeout=timeout) as resp:
-            syn_payload = json.loads(resp.read().decode('utf-8'))
+        syn_payload = _get_json_with_retry(url_syn, timeout=timeout)
         info = syn_payload.get('InformationList', {}).get('Information', [])
         synonyms: List[str] = info[0].get('Synonym', []) if info else []
         wanted = _normalize_chem_name(name)
@@ -508,8 +543,7 @@ def _query_pubchem_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
             "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/"
             f"{cid}/property/SMILES,ConnectivitySMILES,CanonicalSMILES,IsomericSMILES/JSON"
         )
-        with _urlreq.urlopen(url_smi, timeout=timeout) as resp:
-            prop_payload = json.loads(resp.read().decode('utf-8'))
+        prop_payload = _get_json_with_retry(url_smi, timeout=timeout)
         props = prop_payload.get('PropertyTable', {}).get('Properties', [])
         smi = None
         if props:
@@ -527,6 +561,12 @@ def _query_pubchem_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
                 pass
         _PUBCHEM_SMILES_CACHE[key] = smi
         return smi
+    except _ServiceUnavailable as e:
+        # Deliberately not cached: the service was unreachable, so the name is
+        # still an open question. Caching a miss here would persist to
+        # name2smiles.json and make one outage permanent.
+        print(f"[PubChem] unreachable for '{name}': {e}")
+        raise
     except Exception as e:
         print(f"[PubChem] lookup failed for '{name}': {e}")
         _PUBCHEM_SMILES_CACHE[key] = None
@@ -612,7 +652,17 @@ def _is_label_like(name: str) -> bool:
     return bool(_LABEL_TOKEN_RE.match(k))
 
 
-def _resolve_name_to_smiles(name: str) -> Optional[str]:
+def _resolve_name_to_smiles(name: str,
+                            status: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Resolve a chemical name to a SMILES through alias map, cache, PubChem,
+    OPSIN and finally local OCSR.
+
+    Pass a dict as ``status`` to learn why a lookup came back empty: it gets a
+    ``reason`` of ``service-unavailable`` when a web service could not be
+    reached, or ``not-found`` when the services answered and none knew the
+    name. The caller can then mark the field for later completion rather than
+    silently leaving a gap.
+    """
     if not isinstance(name, str) or not name.strip():
         return None
     key = name.strip()
@@ -638,7 +688,14 @@ def _resolve_name_to_smiles(name: str) -> Optional[str]:
         print(f"[name->SMILES cache] retry negative for '{key}'")
         smi = None
     else:
-        smi = _query_pubchem_smiles(key)  # writes _PUBCHEM_SMILES_CACHE[key]
+        try:
+            smi = _query_pubchem_smiles(key)  # writes _PUBCHEM_SMILES_CACHE[key]
+        except _ServiceUnavailable:
+            # Keep going: OPSIN and the local OCSR step may still answer, and
+            # an offline OPSIN needs no network at all.
+            if status is not None:
+                status['service_unavailable'] = True
+            smi = None
     if smi is None:
         opsin_smi = _query_opsin_smiles(key)
         if opsin_smi:
@@ -656,7 +713,25 @@ def _resolve_name_to_smiles(name: str) -> Optional[str]:
             smi = ocsr_smi
             _PUBCHEM_SMILES_CACHE[key] = smi
     _save_persistent_cache()
+    if status is not None and smi is None:
+        status['reason'] = ('service-unavailable'
+                            if status.get('service_unavailable') else 'not-found')
     return smi
+
+
+def _mark_smiles_unresolved(item: Dict[str, Any], status: Dict[str, Any]) -> None:
+    """Record on the item that its SMILES could not be filled in, and why.
+
+    Only entries that end up without a SMILES are marked, so an item the agent
+    already supplied a structure for stays clean. ``service-unavailable`` says
+    the answer is still open and worth retrying later; ``not-found`` says the
+    services answered and none recognised the name.
+    """
+    if item.get('smiles'):
+        return
+    reason = status.get('reason')
+    if reason:
+        item['smiles_unresolved'] = reason
 
 
 def _resolve_smiles_for_condition_item(item: Dict[str, Any]) -> None:
@@ -674,8 +749,9 @@ def _resolve_smiles_for_condition_item(item: Dict[str, Any]) -> None:
     role = item.get('role', '')
     if not isinstance(role, str) or role.strip().lower() not in {'solvent', 'reagent'}:
         return
+    status: Dict[str, Any] = {}
     for name in _candidate_chem_names(item):
-        smi = _resolve_name_to_smiles(name)
+        smi = _resolve_name_to_smiles(name, status=status)
         if smi:
             old = item.get('smiles', '')
             if old != smi:
@@ -694,6 +770,9 @@ def _resolve_smiles_for_condition_item(item: Dict[str, Any]) -> None:
                 tag = 'added' if 'smiles' not in item or not old else 'fallback'
                 print(f"[PubChem {tag}/mixed] '{raw_text}' -> {mixed}" + (f" (was: '{old}')" if old else ''))
             item['smiles'] = mixed
+            return
+
+    _mark_smiles_unresolved(item, status)
 
 
 def fallback_resolve_condition_smiles_in_data(data: Any) -> Any:
@@ -803,10 +882,11 @@ def _resolve_smiles_for_named_item(item: Dict[str, Any],
     label = item.get('label') if isinstance(item.get('label'), str) else None
     if label:
         candidates.append(label)
+    status: Dict[str, Any] = {}
     for txt in candidates:
         subbed = _apply_placeholder_subs(txt, placeholder_subs)
         subbed = _normalize_chem_ocr(subbed)
-        smi = _resolve_name_to_smiles(subbed)
+        smi = _resolve_name_to_smiles(subbed, status=status)
         if smi:
             item['smiles'] = smi
             if subbed != txt:
@@ -815,6 +895,8 @@ def _resolve_smiles_for_named_item(item: Dict[str, Any],
             else:
                 print(f"[txt->SMILES] '{txt}' -> {smi}")
             return
+
+    _mark_smiles_unresolved(item, status)
 
 
 def fallback_resolve_reactant_product_smiles_in_data(data: Any) -> Any:
