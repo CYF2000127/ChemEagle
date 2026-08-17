@@ -1,49 +1,5 @@
 """ChemEAGLE tool suite exposed as an MCP server.
 
-WHY THIS EXISTS
----------------
-Reviewer #2 (point 18) asks whether an out-of-the-box generalist agent equipped
-with the same chemical "skills" matches ChemEAGLE's bespoke multi-agent routing.
-Answering that fairly requires the orchestration layer to be the ONLY variable:
-every arm must call byte-identical tools through a byte-identical interface.
-
-This server is that shared contract.  ChemEAGLE, Claude Code, Codex and any
-other harness all consume THIS server -- nobody gets a privileged or degraded
-toolset.
-
-FAIRNESS RULES ENCODED HERE
----------------------------
-1. Tool docstrings below are the *tool contract*: what it does, its I/O, its
-   failure modes.  They are identical for every arm.  They deliberately contain
-   NO task strategy (no "call X before Y", no chemistry heuristics) -- domain
-   strategy belongs in an arm's system prompt, not smuggled into the tool layer,
-   otherwise the baseline silently inherits ChemEAGLE's prompt engineering.
-2. Every call is logged (tool, args, latency, ok/err) to a JSONL trace so that
-   #tool-calls / latency / failure-rate are measurable per arm.
-3. `--image-root` sandboxes file access to the benchmark directory.  Generalist
-   coding agents have bash+file access; without this they could read the ground
-   truth, cached predictions, or evaluation.py and silently cheat.
-
-TOOLSET SCOPE (why these 11 and not the paper's "10 tools + 3 web services")
----------------------------------------------------------------------------
-The exposed set mirrors what ChemEAGLE's agents can ACTUALLY call at the
-graphic level, verified against the function-calling schemas in
-get_R_group_sub_agent.py / get_reaction_agent.py / get_molecular_agent.py /
-get_text_agent.py.  Giving the baseline more or fewer tools than ChemEAGLE
-itself has would break the comparison in either direction.
-
-Note: TableParser (chemietoolkit.tableextractor.TableExtractor) is deliberately
-NOT exposed.  It is referenced only by the PDF-level routines
-(extract_tables_from_pdf / extract_figures_from_pdf); no graphic-level agent
-calls it -- table cells are read via OCR + the MLLM's own vision.  Exposing it
-here would hand the baseline a capability ChemEAGLE does not use.
-
-RUN
-    python chemeagle_mcp_server.py --image-root <dir> --trace <file.jsonl>
-
-REGISTER (Claude Code)
-    claude mcp add chemeagle -- python MCP_tools/chemeagle_mcp_server.py \
-        --image-root <dir>
 """
 
 from __future__ import annotations
