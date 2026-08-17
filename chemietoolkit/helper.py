@@ -886,13 +886,13 @@ def _resolve_ordered_agents(agent_list: List[str]):
     has_text_extraction = "text_extraction_agent" in ordered
     ordered = [t for t in ordered if t != "text_extraction_agent"]
 
-    rgroup_tools = {
+    rgroup_agents = {
         "process_reaction_image_with_product_variant_R_group",
         "process_reaction_image_with_table_R_group",
     }
-    if rgroup_tools & set(ordered):
+    if rgroup_agents & set(ordered):
         ordered = [t for t in ordered
-                   if t not in ("get_full_reaction_template", "get_reaction_con")]
+                   if t not in ("get_multi_molecular_full","get_full_reaction_template", "get_reaction_con")]
 
     if not ordered:
         ordered = ["get_full_reaction_template"]

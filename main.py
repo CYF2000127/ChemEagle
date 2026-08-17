@@ -71,9 +71,7 @@ def ChemEagle(
 
     base64_image = encode_image(image_path)
 
-    # Reference schemas for the callable agents (kept for documentation and
-    # potential function-calling use; execution is driven by the planner via
-    # _resolve_ordered_agents rather than by LLM tool-calling).
+
     agent_specs = [
         {
         'type': 'function',
@@ -231,10 +229,8 @@ def ChemEagle(
                 if reason:
                     print(f"[D] Plan observer reason: {reason}")
     
-    # Resolve the planner's ordered agent list into an executable agent sequence
-    # (order-preserving dedup + composite-agent mutual exclusion; see helper).
+
     ordered_agents, has_text_extraction = _resolve_ordered_agents(agent_list)
-    print(f"[D] Ordered agents (planner order): {ordered_agents}")
 
     AGENT_MAP = {
         'process_reaction_image_with_product_variant_R_group': process_reaction_image_with_product_variant_R_group,
@@ -249,6 +245,7 @@ def ChemEagle(
     results = []
     main_area_result = None
     observer_notes = []
+    failed_agents = []
 
     def _observe_and_retry(observed_name, observed_result, rerun):
         """Per-agent Action Observer check; at most one re-execution on redo.
@@ -265,11 +262,17 @@ def ChemEagle(
 
     for idx, agent_name in enumerate(ordered_agents):
         print(f"[D] Executing agent {idx + 1}/{len(ordered_agents)}: {agent_name}")
-        agent_result = AGENT_MAP[agent_name](image_path=image_path)
-        if use_action_observer:
-            agent_result = _observe_and_retry(
-                agent_name, agent_result,
-                lambda: AGENT_MAP[agent_name](image_path=image_path))
+        try:
+            agent_result = AGENT_MAP[agent_name](image_path=image_path)
+            if use_action_observer:
+                agent_result = _observe_and_retry(
+                    agent_name, agent_result,
+                    lambda: AGENT_MAP[agent_name](image_path=image_path))
+        except Exception as exc:
+            failed_agents.append(f"{agent_name}: {type(exc).__name__}: {exc}")
+            observer_notes.append(f"{agent_name} failed and was skipped ({type(exc).__name__})")
+            print(f"[D] Agent {agent_name} failed, continuing without it: {exc!r}")
+            continue
         if main_area_result is None:
             main_area_result = agent_result
         execution_logs.append({
@@ -287,24 +290,36 @@ def ChemEagle(
             'tool_call_id': f"agent_call_{idx}",
         })
 
+    if not results:
+        raise RuntimeError(
+            "All planned agents failed, nothing left to synthesise: "
+            + " | ".join(failed_agents)
+        )
+
     observer_reason = "; ".join(observer_notes)
 
     text_extraction_result = None
     if has_text_extraction:
         print(f"[D] Executing text_extraction_agent with graphical_input")
-        text_extraction_result = text_extraction_agent(
-            image_path=image_path,
-            graphical_input=main_area_result,
-        )
-        if use_action_observer and text_extraction_result is not None:
-            text_extraction_result = _observe_and_retry(
-                "text_extraction_agent", text_extraction_result,
-                lambda: text_extraction_agent(
-                    image_path=image_path, graphical_input=main_area_result))
-            observer_reason = "; ".join(observer_notes)
+        try:
+            text_extraction_result = text_extraction_agent(
+                image_path=image_path,
+                graphical_input=main_area_result,
+            )
+            if use_action_observer and text_extraction_result is not None:
+                text_extraction_result = _observe_and_retry(
+                    "text_extraction_agent", text_extraction_result,
+                    lambda: text_extraction_agent(
+                        image_path=image_path, graphical_input=main_area_result))
+        except Exception as exc:
 
-    # One tool_call entry per executed agent, ids paired with the tool messages
-    # (tool_calls / tool_call_id / role="tool" are OpenAI protocol keys).
+            failed_agents.append(f"text_extraction_agent: {type(exc).__name__}: {exc}")
+            observer_notes.append(f"text_extraction_agent failed and was skipped ({type(exc).__name__})")
+            print(f"[D] Agent text_extraction_agent failed, continuing without it: {exc!r}")
+            text_extraction_result = None
+        observer_reason = "; ".join(observer_notes)
+
+
     assistant_message = {
         "role": "assistant",
         "content": None,
@@ -491,6 +506,7 @@ def ChemEagle_OS(
     results = []
     main_area_result = None
     observer_notes = []
+    failed_agents = []
 
     def _observe_and_retry_os(observed_name, observed_result, rerun):
         """Per-agent Action Observer check; at most one re-execution on redo.
@@ -508,11 +524,20 @@ def ChemEagle_OS(
 
     for idx, agent_name in enumerate(ordered_agents):
         print(f"[OS_D] Executing agent {idx + 1}/{len(ordered_agents)}: {agent_name}")
-        agent_result = AGENT_MAP[agent_name](**_os_agent_args(agent_name))
-        if use_action_observer:
-            agent_result = _observe_and_retry_os(
-                agent_name, agent_result,
-                lambda: AGENT_MAP[agent_name](**_os_agent_args(agent_name)))
+        try:
+            agent_result = AGENT_MAP[agent_name](**_os_agent_args(agent_name))
+            if use_action_observer:
+                agent_result = _observe_and_retry_os(
+                    agent_name, agent_result,
+                    lambda: AGENT_MAP[agent_name](**_os_agent_args(agent_name)))
+        except Exception as exc:
+            # Keep the agents that already succeeded: one failure costs its own
+            # contribution, not the whole extraction. The synthesis step is told
+            # which agent is missing via observer_reason.
+            failed_agents.append(f"{agent_name}: {type(exc).__name__}: {exc}")
+            observer_notes.append(f"{agent_name} failed and was skipped ({type(exc).__name__})")
+            print(f"[OS_D] Agent {agent_name} failed, continuing without it: {exc!r}")
+            continue
         if main_area_result is None:
             main_area_result = agent_result
         execution_logs.append({
@@ -533,27 +558,39 @@ def ChemEagle_OS(
 
     print(f'[OS_D] results: {results}')
 
+    if not results:
+        raise RuntimeError(
+            "All planned agents failed, nothing left to synthesise: "
+            + " | ".join(failed_agents)
+        )
+
     observer_reason = "; ".join(observer_notes)
 
     text_extraction_result = None
     if has_text_extraction:
         print(f"[OS_D] Executing text_extraction_agent with graphical_input")
-        text_extraction_result = text_extraction_agent_OS(
-            image_path=image_path,
-            graphical_input=main_area_result,
-            base_url=base_url,
-            api_key=api_key,
-        )
-        if use_action_observer and text_extraction_result is not None:
-            text_extraction_result = _observe_and_retry_os(
-                "text_extraction_agent", text_extraction_result,
-                lambda: text_extraction_agent_OS(
-                    image_path=image_path, graphical_input=main_area_result,
-                    base_url=base_url, api_key=api_key))
-            observer_reason = "; ".join(observer_notes)
+        try:
+            text_extraction_result = text_extraction_agent_OS(
+                image_path=image_path,
+                graphical_input=main_area_result,
+                base_url=base_url,
+                api_key=api_key,
+            )
+            if use_action_observer and text_extraction_result is not None:
+                text_extraction_result = _observe_and_retry_os(
+                    "text_extraction_agent", text_extraction_result,
+                    lambda: text_extraction_agent_OS(
+                        image_path=image_path, graphical_input=main_area_result,
+                        base_url=base_url, api_key=api_key))
+        except Exception as exc:
 
-    # One tool_call entry per executed agent, ids paired with the tool messages
-    # (tool_calls / tool_call_id / role="tool" are OpenAI protocol keys).
+            failed_agents.append(f"text_extraction_agent: {type(exc).__name__}: {exc}")
+            observer_notes.append(f"text_extraction_agent failed and was skipped ({type(exc).__name__})")
+            print(f"[OS_D] Agent text_extraction_agent failed, continuing without it: {exc!r}")
+            text_extraction_result = None
+        observer_reason = "; ".join(observer_notes)
+
+
     assistant_message = {
         "role": "assistant",
         "content": None,
@@ -609,45 +646,13 @@ def ChemEagle_OS(
         model=model_name,
         messages=messages_list,
         temperature=0,
+        response_format={'type': 'json_object'},
     )
-    print(response)
-    
-    raw_content = response.choices[0].message.content
-    
-    from get_R_group_sub_agent import extract_json_from_text_with_reasoning
-    
-    try:
-        gpt_output = json.loads(raw_content)
-        print("DEBUG [OS_D]: Successfully parsed JSON directly")
-    except json.JSONDecodeError:
-        print("WARNING [OS_D]: Direct JSON parsing failed, trying to extract JSON from text...")
-        gpt_output = extract_json_from_text_with_reasoning(raw_content)
-        gpt_output = fallback_validate_and_fix_smiles_in_dict(gpt_output)
-        gpt_output = fallback_resolve_condition_smiles_in_data(gpt_output)
-        gpt_output = fallback_resolve_reactant_product_smiles_in_data(gpt_output)  
-        
-        if gpt_output is not None:
-            print("DEBUG [OS_D]: Successfully extracted JSON from text (with reasoning support)")
-        else:
-            print(f"ERROR [OS_D]: Failed to parse JSON from model response")
-            print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
-            print("WARNING [OS_D]: Returning agent results as fallback")
-            agent_results_dict = {}
-            for log in execution_logs:
-                t_name = log.get("name")
-                t_result = log.get("result")
-                if t_name and t_name != "text_extraction_agent" and t_result is not None:
-                    agent_results_dict[t_name] = t_result
-            if len(agent_results_dict) == 1:
-                single_result = list(agent_results_dict.values())[0]
-                if isinstance(single_result, dict):
-                    if text_extraction_result is not None:
-                        single_result["text_extraction"] = text_extraction_result
-                    return single_result
-            else:
-                if text_extraction_result is not None:
-                    agent_results_dict["text_extraction"] = text_extraction_result
-                return agent_results_dict
+
+    gpt_output = json.loads(response.choices[0].message.content)
+    gpt_output = fallback_validate_and_fix_smiles_in_dict(gpt_output)
+    gpt_output = fallback_resolve_condition_smiles_in_data(gpt_output)
+    gpt_output = fallback_resolve_reactant_product_smiles_in_data(gpt_output)
 
     if text_extraction_result is not None:
         if isinstance(text_extraction_result, dict) and "annotated_text" in text_extraction_result:

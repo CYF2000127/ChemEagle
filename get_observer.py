@@ -281,20 +281,15 @@ def plan_observer_agent_OS(
                 {"role": "user", "content": user_content},
             ],
             temperature=0,
+            response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content
-        
+
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:
-            try:
-                from get_R_group_sub_agent import extract_json_from_text_with_reasoning
-                parsed = extract_json_from_text_with_reasoning(content)
-                if parsed is None:
-                    raise ValueError("Failed to extract JSON from response")
-            except (ImportError, ValueError):
-                print(f"⚠️ Warning: plan_observer_agent_OS could not parse JSON, returning the original plan")
-                return default
+            print(f"⚠️ Warning: plan_observer_agent_OS could not parse JSON, returning the original plan")
+            return default
         
         return {
             "list_of_agents": parsed.get("list_of_agents", parsed.get("plan", tool_calls)),
@@ -354,20 +349,15 @@ def action_observer_agent_OS(
                 {"role": "user", "content": user_content},
             ],
             temperature=0,
+            response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content
-        
+
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:
-            try:
-                from get_R_group_sub_agent import extract_json_from_text_with_reasoning
-                parsed = extract_json_from_text_with_reasoning(content)
-                if parsed is None:
-                    raise ValueError("Failed to extract JSON from response")
-            except (ImportError, ValueError):
-                print(f"⚠️ Warning: action_observer_agent_OS could not parse JSON, returning no redo")
-                return default
+            print(f"⚠️ Warning: action_observer_agent_OS could not parse JSON, returning no redo")
+            return default
         
         return {
             "redo": bool(parsed.get("redo", False)),

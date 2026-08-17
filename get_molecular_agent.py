@@ -1080,34 +1080,23 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(
         backoff_factor=2,
         model=completion_payload["model"],
         messages=completion_payload["messages"],
-        #response_format={'type': 'json_object'},  # vLLM may not support this
+        response_format={'type': 'json_object'},
         temperature=0
     )
 
-    # Get GPT-generated result (supports extraction from text containing reasoning)
-    from get_R_group_sub_agent import extract_json_from_text_with_reasoning
-    
+    # Get GPT-generated result
     raw_content = response.choices[0].message.content
-    
+
     try:
-        # First try direct parsing
         gpt_output = [json.loads(raw_content)]
         print(f"DEBUG [OS]: Successfully parsed JSON directly")
     except json.JSONDecodeError:
-        # If direct parsing fails, use intelligent extraction function
-        print(f"WARNING [OS]: Direct JSON parsing failed, trying to extract JSON from text...")
-        parsed_json = extract_json_from_text_with_reasoning(raw_content)
-        
-        if parsed_json is not None:
-            gpt_output = [parsed_json]
-            print(f"DEBUG [OS]: Successfully extracted JSON from text (with reasoning support)")
-        else:
-            print(f"ERROR [OS]: Failed to parse JSON from model response")
-            print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
-            raise json.JSONDecodeError(
-                f"Could not parse JSON from model response. Content may not be valid JSON.",
-                raw_content, 0
-            )
+        print(f"ERROR [OS]: Failed to parse JSON from model response")
+        print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
+        raise json.JSONDecodeError(
+            f"Could not parse JSON from model response. Content may not be valid JSON.",
+            raw_content, 0
+        )
     
     print(f"gpt_output_mol:{gpt_output}")
 

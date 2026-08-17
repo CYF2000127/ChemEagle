@@ -1546,42 +1546,34 @@ def process_reaction_image_with_product_variant_R_group_OS(
         backoff_factor=2,
         model=completion_payload["model"],
         messages=completion_payload["messages"],
-        #response_format={'type': 'json_object'},
+        response_format={'type': 'json_object'},
         temperature=0
     )
 
     # Get GPT-generated result
     raw_content = response.choices[0].message.content
-    
+
     # Check whether content is empty
     if not raw_content or not raw_content.strip():
         print(f"ERROR [OS]: Model returned empty content")
         print(f"Full response object: {response}")
         raise ValueError("Model returned empty content. Please check the model response.")
-    
+
     print(f"DEBUG [OS]: Raw content preview (first 500 chars):\n{raw_content[:500]}")
-    
-    # Try parsing JSON (supports extraction from text containing reasoning)
+
+    # Parse JSON
     gpt_output = None
-    
+
     try:
-        # First try direct parsing
         gpt_output = json.loads(raw_content)
         print(f"DEBUG [OS]: Successfully parsed JSON directly")
     except json.JSONDecodeError:
-        # If direct parsing fails, use intelligent extraction function
-        print(f"WARNING [OS]: Direct JSON parsing failed, trying to extract JSON from text...")
-        gpt_output = extract_json_from_text_with_reasoning(raw_content)
-        
-        if gpt_output is not None:
-            print(f"DEBUG [OS]: Successfully extracted JSON from text (with reasoning support)")
-        else:
-            print(f"ERROR [OS]: Failed to parse JSON from model response")
-            print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
-            raise json.JSONDecodeError(
-                f"Could not parse JSON from model response. Content may not be valid JSON.",
-                raw_content, 0
-            )
+        print(f"ERROR [OS]: Failed to parse JSON from model response")
+        print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
+        raise json.JSONDecodeError(
+            f"Could not parse JSON from model response. Content may not be valid JSON.",
+            raw_content, 0
+        )
     
     print("R_group_agent_output:", gpt_output)
     gpt_output = _compensate_missing_molecules(gpt_output, results, 'get_multi_molecular_text_to_correct')
@@ -2066,10 +2058,10 @@ def process_reaction_image_with_table_R_group_OS(
         backoff_factor=2,
         model=completion_payload["model"],
         messages=completion_payload["messages"],
-        #response_format={'type': 'json_object'},
+        response_format={'type': 'json_object'},
         temperature=0
     )
-    
+
     print(f"DEBUG [OS]: Model response content type: {type(response.choices[0].message.content)}")
     print(f"DEBUG [OS]: Model response content preview: {str(response.choices[0].message.content)[:500]}")
 
@@ -2197,28 +2189,20 @@ def process_reaction_image_with_table_R_group_OS(
     print(f"DEBUG [OS]: Raw content length: {len(raw_content)}")
     print(f"DEBUG [OS]: Raw content preview (first 500 chars):\n{raw_content[:500]}")
     
-    # Try parsing JSON (supports extraction from text containing reasoning)
+    # Parse JSON
     input2 = None
-    
+
     try:
-        # First try direct parsing
         input2 = json.loads(raw_content)
         print(f"DEBUG [OS]: Successfully parsed JSON directly")
     except json.JSONDecodeError:
-        # If direct parsing fails, use intelligent extraction function
-        print(f"WARNING [OS]: Direct JSON parsing failed, trying to extract JSON from text...")
-        input2 = extract_json_from_text_with_reasoning(raw_content)
-        
-        if input2 is not None:
-            print(f"DEBUG [OS]: Successfully extracted JSON from text (with reasoning support)")
-        else:
-            print(f"ERROR [OS]: Failed to parse JSON from model response")
-            print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
-            raise json.JSONDecodeError(
-                f"Could not parse JSON from model response. Content may not be valid JSON.",
-                raw_content, 0
-            )
-    
+        print(f"ERROR [OS]: Failed to parse JSON from model response")
+        print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
+        raise json.JSONDecodeError(
+            f"Could not parse JSON from model response. Content may not be valid JSON.",
+            raw_content, 0
+        )
+
     # Validate format of input2
     print(f"DEBUG [OS]: input2 type: {type(input2)}")
     if isinstance(input2, dict):

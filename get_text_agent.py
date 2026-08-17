@@ -391,23 +391,8 @@ Here is my step-by-step analysis:
     try:
         return json.loads(raw_content)
     except json.JSONDecodeError:
-        # GPT occasionally appends trailing prose / a second JSON object even with
-        # response_format=json_object. Fall back to extracting the first JSON object.
-        try:
-            from get_R_group_sub_agent import extract_json_from_text_with_reasoning
-            extracted = extract_json_from_text_with_reasoning(raw_content)
-            if extracted is not None:
-                return extracted
-        except Exception:
-            pass
-        # Last-resort: take substring up to the first balanced top-level '}'
-        decoder = json.JSONDecoder()
-        try:
-            obj, _ = decoder.raw_decode(raw_content.lstrip())
-            return obj
-        except Exception:
-            print(f"[WARN] text_extraction_agent: failed to parse JSON, returning raw text. First 500 chars:\n{raw_content[:500]}")
-            return {"annotated_text": raw_content}
+        print(f"[WARN] text_extraction_agent: failed to parse JSON, returning raw text. First 500 chars:\n{raw_content[:500]}")
+        return {"annotated_text": raw_content}
 
 
 def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, **kwargs):
@@ -613,14 +598,6 @@ Here is my step-by-step analysis:
             try:
                 return json.loads(raw_content)
             except json.JSONDecodeError:
-                # Try to extract JSON from text
-                try:
-                    from get_R_group_sub_agent import extract_json_from_text_with_reasoning
-                    result = extract_json_from_text_with_reasoning(raw_content)
-                    if result is not None:
-                        return result
-                except ImportError:
-                    pass
                 return {"content": raw_content}
         return {}
     
@@ -665,21 +642,6 @@ Here is my step-by-step analysis:
     try:
         return json.loads(raw_content)
     except json.JSONDecodeError:
-        # GPT occasionally appends trailing prose / a second JSON object even with
-        # response_format=json_object. Fall back to extracting the first JSON object.
-        try:
-            from get_R_group_sub_agent import extract_json_from_text_with_reasoning
-            extracted = extract_json_from_text_with_reasoning(raw_content)
-            if extracted is not None:
-                return extracted
-        except Exception:
-            pass
-        # Last-resort: take substring up to the first balanced top-level '}'
-        decoder = json.JSONDecoder()
-        try:
-            obj, _ = decoder.raw_decode(raw_content.lstrip())
-            return obj
-        except Exception:
-            print(f"[WARN] text_extraction_agent: failed to parse JSON, returning raw text. First 500 chars:\n{raw_content[:500]}")
-            return {"annotated_text": raw_content}
+        print(f"[WARN] text_extraction_agent: failed to parse JSON, returning raw text. First 500 chars:\n{raw_content[:500]}")
+        return {"annotated_text": raw_content}
     return raw_content
