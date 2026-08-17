@@ -27,6 +27,7 @@ import time
 from chemietoolkit.helper import _patch_to_mol
 
 
+
 def _ga_bbox_iou(a, b) -> float:
     """Intersection-over-union of two ``[x1, y1, x2, y2]`` boxes."""
     if not (a and b and len(a) == 4 and len(b) == 4):
