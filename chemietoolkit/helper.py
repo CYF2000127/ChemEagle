@@ -9,6 +9,7 @@ import base64
 from typing import Optional, Dict, Any
 
 
+
 def print(*args, **kwargs):  # noqa: A001 - intentional shadow of builtin
     pass
 
