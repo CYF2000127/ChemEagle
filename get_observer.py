@@ -15,6 +15,7 @@ API_VERSION = os.getenv("API_VERSION")
 
 _client = None
 
+
 def _get_client():
     global _client
     if _client is None:
