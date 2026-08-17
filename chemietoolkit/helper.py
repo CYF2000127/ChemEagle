@@ -9,7 +9,6 @@ import base64
 from typing import Optional, Dict, Any
 
 
-# Silence all module-level diagnostic prints from this file.
 def print(*args, **kwargs):  # noqa: A001 - intentional shadow of builtin
     pass
 
