@@ -80,6 +80,7 @@ def fallback_validate_and_fix_smiles_in_dict(data: Dict[str, Any]) -> Dict[str, 
 # PubChem and override the agent's `smiles` field if a hit is returned. If the
 # lookup fails, the original agent output is kept.
 # ============================================================================
+import urllib.error as _urlerr
 import urllib.parse as _urlparse
 import urllib.request as _urlreq
 
@@ -532,11 +533,45 @@ def _query_pubchem_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
         return None
 
 
+def _accept_opsin_smiles(text: Optional[str]) -> Optional[str]:
+    """OPSIN answers with a bare SMILES, or with nothing when it cannot parse
+    the name. Whitespace in the answer means it is not a SMILES."""
+    if not text:
+        return None
+    s = text.strip()
+    if not s or any(ch.isspace() for ch in s):
+        return None
+    if RDKIT_AVAILABLE:
+        try:
+            if Chem.MolFromSmiles(s) is None:
+                return None
+        except Exception:
+            return None
+    return s
+
+
+def _local_opsin_smiles(name: str) -> Optional[str]:
+    """OPSIN run locally through py2opsin, which bundles the OPSIN jar and so
+    needs a Java runtime on PATH. Same parser as the web service, so it gives
+    the same answer without leaving the machine."""
+    try:
+        from py2opsin import py2opsin
+    except ImportError:
+        return None
+    try:
+        return _accept_opsin_smiles(py2opsin(name))
+    except Exception:
+        return None
+
+
 def _query_opsin_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
     """OPSIN (IUPAC name -> SMILES) fallback. Free, deterministic, name-only.
 
     Best at systematic IUPAC names like ``3-methylpyridine``, ``1,4-dioxane``.
-    Returns ``None`` for non-IUPAC strings (404 from OPSIN) or any error.
+    Queries the OPSIN web service first and falls back to the bundled local
+    OPSIN when the service cannot be reached, so a machine without network
+    access still resolves systematic names. Returns ``None`` for non-IUPAC
+    strings (404 from OPSIN) or any error.
     """
     if not isinstance(name, str):
         return None
@@ -548,18 +583,15 @@ def _query_opsin_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
     try:
         with _urlreq.urlopen(url, timeout=timeout) as resp:
             text = resp.read().decode('utf-8', errors='ignore').strip()
-        if not text or any(ch.isspace() for ch in text):
-            return None
-        if RDKIT_AVAILABLE:
-            try:
-                if Chem.MolFromSmiles(text) is None:
-                    return None
-            except Exception:
-                return None
-        return text
+    except _urlerr.HTTPError as exc:
+        # 404 is OPSIN saying the name is not parseable. The local library is
+        # the same parser and would answer the same, so only a server-side
+        # failure is worth retrying offline.
+        return None if exc.code == 404 else _local_opsin_smiles(s)
     except Exception:
-        # 404 from OPSIN just means the name wasn't parseable; not noteworthy.
-        return None
+        # No route to the service: offline, DNS failure, timeout, proxy.
+        return _local_opsin_smiles(s)
+    return _accept_opsin_smiles(text)
 
 
 _LABEL_TOKEN_RE = re.compile(
