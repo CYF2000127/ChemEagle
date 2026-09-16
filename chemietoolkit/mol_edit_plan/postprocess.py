@@ -367,7 +367,8 @@ COUNTER_IONS = {
     'NTf2-': '[NTf2-]', 'NTf2': '[NTf2-]', 'Tf2N-': '[NTf2-]',
     'ClO4-': '[ClO4-]', 'ClO4': '[ClO4-]',
     'Cl-': '[Cl-]', 'Br-': '[Br-]', 'I-': '[I-]', 'F-': '[F-]',
-    'MeOSO3-': '[MeOSO3-]', 'MeSO4-': '[MeOSO3-]', 'OSO3Me': '[MeOSO3-]', 'MeOSO3': '[MeOSO3-]',
+    'MeOSO3-': '[MeOSO3-]', 'MeSO4-': '[MeOSO3-]', 'OSO3Me': '[MeOSO3-]', 'MeOSO3': '[MeOSO3-]', 'SO4Me-': '[MeOSO3-]', 'SO4Me': '[MeOSO3-]',
+    'OSO3Me-': '[MeOSO3-]', 'MeSO4': '[MeOSO3-]', 'CH3OSO3-': '[MeOSO3-]', 'CH3SO4-': '[MeOSO3-]',
     'OTs-': '[OTs-]', 'TsO-': '[OTs-]', 'OTs': '[OTs-]', 'NO3-': '[NO3-]', 'NO3': '[NO3-]', 'OAc-': '[OAc-]', 'AcO-': '[OAc-]',
 }
 
