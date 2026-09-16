@@ -1489,6 +1489,20 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_plan(
                 if artifacts is not None:
                     artifacts['plan_retry'] = plan
                     artifacts['raw_reply_retry'] = raw_content
+    if plan_out is None and plan is not None and os.environ.get('MOL_PLAN_LENIENT', '1') != '0':
+        # MOL_PLAN_LENIENT=1 (default): keep what the model got right. The entries that fail
+        # validation are dropped and audited; the rest of the plan is applied.
+        from chemietoolkit.mol_edit_plan.postprocess import process_lenient
+        try:
+            plan_out = process_lenient(full_item, plan)
+            post = plan_out['postprocess']
+            print(f"WARNING [mol-agent]: plan applied leniently: {len(post.get('dropped_entries', []))} entr{'y' if len(post.get('dropped_entries', [])) == 1 else 'ies'} dropped, "
+                  f"{len(post.get('added_decisions', []))} decision(s) added; first drop: {str(post.get('dropped_entries', [{}])[0].get('reason'))[:120] if post.get('dropped_entries') else '-'}")
+            if artifacts is not None:
+                artifacts['plan_lenient'] = {'dropped': post.get('dropped_entries'), 'added': post.get('added_decisions')}
+        except PlanError as exc:
+            last_error = f"{last_error}; lenient: {exc}"
+            print(f"WARNING [mol-agent]: lenient application failed too: {exc}")
     if plan_out is None:
         if artifacts is not None:
             artifacts['plan_error'] = last_error

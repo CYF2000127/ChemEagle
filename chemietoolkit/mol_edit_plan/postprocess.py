@@ -32,7 +32,25 @@ import jsonschema
 
 
 class PlanError(ValueError):
-    pass
+    """A plan entry failed validation. ``entry`` = (plan section, index) of the entry being checked
+    when the check ran, or None for a cross-entry check."""
+
+    def __init__(self, message, entry=None):
+        super().__init__(message)
+        self.entry = entry
+
+
+_CURRENT_ENTRY = None      # (section, index) of the plan entry under validation, for PlanError.entry
+
+
+def _entering(section, index):
+    global _CURRENT_ENTRY
+    _CURRENT_ENTRY = (section, index)
+
+
+def _leaving():
+    global _CURRENT_ENTRY
+    _CURRENT_ENTRY = None
 
 
 def obj(**fields):
@@ -340,7 +358,7 @@ def literal_matches(literal, value, audit, **context):
 
 def require(condition, message):
     if not condition:
-        raise PlanError(message)
+        raise PlanError(message, entry=_CURRENT_ENTRY)
 
 
 def process(data, plan):
@@ -363,7 +381,8 @@ def process(data, plan):
     # (a rare-element lookalike such as [Pr], or a bare atom / *) is handled by the atom-level
     # rules of step 1b instead of rejecting the plan; the kind is inferred and audited.
     rerouted = []
-    for patch in plan['ocr_corrections']:
+    for _k, patch in enumerate(plan['ocr_corrections']):
+        _entering('ocr_corrections', _k)
         mid, aid = patch['molecule_id'], patch['atom_id']
         if mid in mols and aid not in atoms:
             m = re.fullmatch(re.escape(mid) + r':a(\d{3,})', aid)
@@ -378,7 +397,7 @@ def process(data, plan):
                 elif CHARGED.fullmatch(patch['corrected_symbol']) and element_of(src) == element_of(patch['corrected_symbol']):
                     kind = 'charge'
                 if kind is not None:
-                    rerouted.append({**patch, 'kind': kind})
+                    rerouted.append({**patch, 'kind': kind, '_ocr_index': _k})
                     audit.append({'operation': 'reroute_ocr_to_atom_correction', **patch, 'kind': kind})
                     continue
         i, j = atom(patch['molecule_id'], patch['atom_id'])
@@ -393,7 +412,10 @@ def process(data, plan):
 
     # 1b. Atom-level OCR: three mechanically checkable kinds, never an element change
     model_charged = set()
-    for patch in list(plan['atom_corrections']) + rerouted:
+    _leaving()
+    for _k, patch in enumerate(list(plan['atom_corrections']) + rerouted):
+        _entering('ocr_corrections', patch['_ocr_index']) if '_ocr_index' in patch else _entering('atom_corrections', _k)
+        patch = {k: v for k, v in patch.items() if k != '_ocr_index'}
         mid, aid, kind = patch['molecule_id'], patch['atom_id'], patch['kind']
         require(mid in mols, f'Unknown molecule {mid}')
         m = re.fullmatch(re.escape(mid) + r':a(\d{3,})', aid)
@@ -437,6 +459,7 @@ def process(data, plan):
     #   * a molecule carrying a positive charge has an isolated halide / common anion -> [X-].
     # An invalid tool SMILES alone is not enough: bond-order misreads look the same, so nothing is
     # placed in molecules the model did not report as charged.
+    _leaving()
     charged = set(plan['charged_molecules'])
     require(charged <= set(mols), f'Unknown molecule in charged_molecules: {sorted(charged - set(mols))}')
     program_fixes = []
@@ -478,7 +501,8 @@ def process(data, plan):
 
     # 2. Text corrections
     touched_text = set()
-    for patch in plan['text_corrections']:
+    for _k, patch in enumerate(plan['text_corrections']):
+        _entering('text_corrections', _k)
         tid = patch['text_id']
         require(tid in texts and tid not in touched_text, f'Unknown/duplicate text ID {tid}')
         require(patch['corrected_text'], 'Text correction cannot erase text')
@@ -493,7 +517,9 @@ def process(data, plan):
     substituted_mols = set()
     definition_scopes = {}
     defined_names = {d['name'] for d in plan['definitions']}
-    for definition in plan['definitions']:
+    _leaving()
+    for _k, definition in enumerate(plan['definitions']):
+        _entering('definitions', _k)
         name = definition['name']
         token = f'[{name}]'
         require(VARIABLE.fullmatch(token), f'Unsupported definition variable {name}')
@@ -544,7 +570,9 @@ def process(data, plan):
 
     # 4. Expansion groups (joint rows, cloned per variant)
     groups, compound_ids = {}, set()
-    for group in plan['groups']:
+    _leaving()
+    for _k, group in enumerate(plan['groups']):
+        _entering('groups', _k)
         mid = group['molecule_id']
         require(mid in mols and mid not in groups, f'Unknown/duplicate expansion group {mid}')
         tid = group['source_text_id']
@@ -608,7 +636,9 @@ def process(data, plan):
 
     # 5. Decisions: required for every molecule that still carries a variable
     decisions = {}
-    for decision in plan['decisions']:
+    _leaving()
+    for _k, decision in enumerate(plan['decisions']):
+        _entering('decisions', _k)
         mid = decision['molecule_id']
         require(mid in mols and mid not in decisions, 'Unknown/duplicate decision')
         require((decision['action'] == 'expand') == (mid in groups), 'Decision/group disagreement')
@@ -618,8 +648,11 @@ def process(data, plan):
                           if any(VARIABLE.fullmatch(s) for s in edited[m['source_bbox_index']]['symbols'])}
     require(required_decisions <= set(decisions), f'Missing decisions for variable-bearing molecules: {sorted(required_decisions - set(decisions))}')
     require(set(groups) <= set(decisions), 'Expansion group lacks decision')
-    for warning in plan['structure_warnings']:
+    _leaving()
+    for _k, warning in enumerate(plan['structure_warnings']):
+        _entering('structure_warnings', _k)
         require(warning['molecule_id'] in mols, 'Unknown structure warning molecule')
+    _leaving()
 
     # 6. Assemble output: unchanged/edited boxes keep their order; expanded molecules become variant + label pairs
     out, links, index_map, provenance = [], [], {}, []
@@ -678,6 +711,56 @@ def process(data, plan):
         if candidate.get('category') == '[Mol]':
             require(len(candidate['symbols']) == len(original['symbols']), 'Internal atom count mutation')
             require(candidate.get('bbox') == original.get('bbox') and candidate.get('smiles') == original.get('smiles'), 'Internal immutable field mutation')
+    return result
+
+
+def process_lenient(data, plan, max_drops=60):
+    """process() that survives bad entries: an entry that fails validation is dropped (audited), a
+    decision that disagrees with the surviving groups/definitions is replaced, and molecules left
+    without a decision get keep_generic. Everything the model got right is still applied. Raises
+    PlanError only when the plan cannot be made valid this way (or the schema itself is broken)."""
+    plan = copy.deepcopy(plan)
+    dropped, added = [], []
+    for _ in range(max_drops):
+        try:
+            result = process(data, plan)
+            break
+        except PlanError as exc:
+            msg = str(exc)
+            if exc.entry is not None:
+                section, index = exc.entry
+                gone = plan[section].pop(index)
+                dropped.append({'section': section, 'entry': gone, 'reason': msg})
+                continue
+            if msg.startswith('Missing decisions'):
+                group_ids = {g['molecule_id'] for g in plan['groups']}
+                have = {d['molecule_id'] for d in plan['decisions']}
+                for mid in re.findall(r"mol_\d+", msg):
+                    if mid not in have:
+                        d = {'molecule_id': mid, 'action': 'expand' if mid in group_ids else 'keep_generic', 'reason': 'program: decision added after an invalid entry was dropped'}
+                        plan['decisions'].append(d)
+                        added.append(d)
+                continue
+            if msg.startswith('Expansion group lacks decision'):
+                have = {d['molecule_id'] for d in plan['decisions']}
+                for g in plan['groups']:
+                    if g['molecule_id'] not in have:
+                        d = {'molecule_id': g['molecule_id'], 'action': 'expand', 'reason': 'program: decision added for a surviving group'}
+                        plan['decisions'].append(d)
+                        added.append(d)
+                continue
+            raise
+    else:
+        raise PlanError(f'plan still invalid after dropping {len(dropped)} entries')
+    post = result['postprocess']
+    for d in dropped:
+        post['audit'].append({'operation': 'dropped_entry', **d})
+    for d in added:
+        post['audit'].append({'operation': 'added_decision', **d})
+    post['dropped_entries'] = dropped
+    post['added_decisions'] = added
+    if dropped or added:
+        post['status'] = post['status'] + '_lenient'
     return result
 
 
