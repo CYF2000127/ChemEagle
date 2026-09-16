@@ -13,7 +13,9 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem import rdFMCS
 from scipy.optimize import linear_sum_assignment
 
+
 RDLogger.DisableLog("rdApp.*")
+
 
 # Metals whose salts InChI disconnects, so the covalent and ionic spellings of
 # the same substance unify (B, C, N, O, F, Ne, Si, P, S, Cl, Ar, As, Se, Br, Kr,
