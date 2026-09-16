@@ -316,6 +316,13 @@ def get_reaction_withatoms(image_path: str) -> dict:
                 # If bbox exists in input1 mapping, update symbols
                 if bbox in symbol_mapping:
                     updated_symbols = symbol_mapping[bbox]
+                    # One symbol per atom, or the graph cannot take it: a superatom such as [CS2]
+                    # spelled out by the LLM as S, C, S would index past the bond matrix. Keep the
+                    # tool's symbols for that molecule instead.
+                    expected = len(item.get('coords') or item.get('symbols') or [])
+                    if expected and len(updated_symbols) != expected:
+                        print(f"Warning: LLM returned {len(updated_symbols)} symbols for a {expected}-atom molecule in bbox {bbox}; keeping the tool's symbols")
+                        continue
                     item['symbols'] = updated_symbols
                     
                     # Update atom_symbol in atoms
@@ -538,6 +545,13 @@ def get_reaction_withatoms_correctR_azure(image_path: str) -> dict:
                 # If bbox exists in input1 mapping, update symbols
                 if bbox in symbol_mapping:
                     updated_symbols = symbol_mapping[bbox]
+                    # One symbol per atom, or the graph cannot take it: a superatom such as [CS2]
+                    # spelled out by the LLM as S, C, S would index past the bond matrix. Keep the
+                    # tool's symbols for that molecule instead.
+                    expected = len(item.get('coords') or item.get('symbols') or [])
+                    if expected and len(updated_symbols) != expected:
+                        print(f"Warning: LLM returned {len(updated_symbols)} symbols for a {expected}-atom molecule in bbox {bbox}; keeping the tool's symbols")
+                        continue
                     item['symbols'] = updated_symbols
                     
                     # Update atom_symbol in atoms
@@ -904,6 +918,13 @@ def get_reaction_withatoms_correctR(
                 # If bbox exists in input1 mapping, update symbols
                 if bbox in symbol_mapping:
                     updated_symbols = symbol_mapping[bbox]
+                    # One symbol per atom, or the graph cannot take it: a superatom such as [CS2]
+                    # spelled out by the LLM as S, C, S would index past the bond matrix. Keep the
+                    # tool's symbols for that molecule instead.
+                    expected = len(item.get('coords') or item.get('symbols') or [])
+                    if expected and len(updated_symbols) != expected:
+                        print(f"Warning: LLM returned {len(updated_symbols)} symbols for a {expected}-atom molecule in bbox {bbox}; keeping the tool's symbols")
+                        continue
                     item['symbols'] = updated_symbols
                     
                     # Update atom_symbol in atoms

@@ -354,6 +354,14 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['B((PpIn))', 'B(PpIn)', 'B(Ppin)', 'B(pIn)', 'Bpm', 'Bpn'], 'B1OC(C)(C)C(C)(C)O1', "B1OC(C)(C)C(C)(C)O1", 0.3),  # OCR of Bpin
     Substitution(['BF3K', 'KF3B'], '[B-](F)(F)F.[K+]', '[B-](F)(F)F.[K+]', 0.3),
     Substitution(['ZrCp2Cl', 'ZrGp2Cl'], '[Zr](Cl)(C1=CC=CC1)C1=CC=CC1', '[Zr](Cl)(C1=CC=CC1)C1=CC=CC1', 0.3),
+    # Counter-ions written with their charge sign, as the vision model reads the label beside a salt
+    # ("BF4-" drawn next to an azolium): the free anion. [BF4-] was read 141 times in the 2026-09-14
+    # runs and, missing here, expanded to *. The mol-edit-plan charge rule also turns [BF4] into [BF4-].
+    Substitution(['BF4-'], 'F[B-](F)(F)F', 'F[B-](F)(F)F', 0),
+    Substitution(['PF6-', 'PF6'], 'F[P-](F)(F)(F)(F)F', 'F[P-](F)(F)(F)(F)F', 0),
+    Substitution(['SbF6-', 'SbF6'], 'F[Sb-](F)(F)(F)(F)F', 'F[Sb-](F)(F)(F)(F)F', 0),
+    Substitution(['OTf-', 'TfO-'], 'O=S(=O)([O-])C(F)(F)F', 'O=S(=O)([O-])C(F)(F)F', 0),
+    Substitution(['NTf2-', 'Tf2N-'], 'O=S(=O)([N-]S(=O)(=O)C(F)(F)F)C(F)(F)F', 'O=S(=O)([N-]S(=O)(=O)C(F)(F)F)C(F)(F)F', 0),
 ]
 
 ABBREVIATIONS = {abbrv: sub for sub in SUBSTITUTIONS for abbrv in sub.abbrvs}

@@ -15,8 +15,11 @@ Derived from new-chat/work/rgroup_plan/postprocess.py (2026-09-09). Additions:
 * ``[n*]`` (the vision tool's own notation for Rn) is addressable through an OCR
   correction to ``[Rn]``; it is not treated as a variable until then.
 
-Composite tokens (``[SO2Ar]``) are not substituted: whole tokens only, as the GT
-protocol currently defines (see mol_llm_stage_gt/tools/REVIEW_PROTOCOL.md).
+Composite tokens that embed a variable (``[SO2Ar]``, ``[OR]``) get the value spliced in
+by the program: for a definition when the variable is defined, and for an expansion group
+when the model lists the composite atom as that variable (``[OR]`` with rows R = TBS and
+R = H gives ``[OTBS]`` and ``[OH]``). A splice is kept only when Graph2SMILES expands it
+without a wildcard.
 """
 import argparse
 import copy
@@ -197,6 +200,26 @@ def composite_candidates(symbol, name, value, taken=()):
     return []
 
 
+def composite_variable(symbol, name):
+    """True when symbol is a composite label with the variable name embedded in it ([OR] or [CO2R]
+    for R, [SO2Ar] for Ar), so an expansion group can splice each variant's value into it."""
+    return (isinstance(symbol, str) and LABEL.fullmatch(symbol) is not None and not VARIABLE.fullmatch(symbol)
+            and VARIABLE.fullmatch(f'[{name}]') is not None and bool(composite_candidates(symbol, name, 'H')))
+
+
+# Variable names looked for inside composite labels when listing them for the model. Only the R and Ar
+# families: single-letter names (A, E, X, Q) also occur in ordinary abbreviations ([DMAP], [SEM], [XPhos]).
+COMPOSITE_NAME = re.compile(r"(?<![a-z])(Ar\d*|R\d*)(?![a-z'])")
+
+
+def composite_variable_names(symbol):
+    """Variable names (R family, Ar family) embedded in a composite label: [OR] -> ['R'], [CO2R1] -> ['R1']."""
+    if not isinstance(symbol, str) or not LABEL.fullmatch(symbol) or VARIABLE.fullmatch(symbol) or re.search(r'[+\-]', symbol):
+        return []
+    names = dict.fromkeys(m.group(1) for m in COMPOSITE_NAME.finditer(symbol[1:-1]))
+    return [n for n in names if composite_variable(symbol, n)]
+
+
 def smiles_parses(smiles):
     """True/False when RDKit is available and the tool SMILES is a string; None otherwise."""
     if not isinstance(smiles, str) or not smiles or smiles == '<invalid>':
@@ -275,7 +298,8 @@ def catalog(data):
                                     'corefs': source.get('corefs', [])}),
            'molecules': list(mols.values()), 'texts': list(texts.values()),
            'corefs': [list(c) for c in source.get('corefs', [])],
-           'variable_molecule_ids': [mid for mid, m in mols.items() if any(VARIABLE.fullmatch(a['symbol']) for a in m['label_atoms'])]}
+           'variable_molecule_ids': [mid for mid, m in mols.items() if any(VARIABLE.fullmatch(a['symbol']) for a in m['label_atoms'])],
+           'composite_variable_molecule_ids': [mid for mid, m in mols.items() if any(composite_variable_names(a['symbol']) for a in m['label_atoms'])]}
     return cat, mols, texts, atoms
 
 
@@ -528,17 +552,22 @@ def process(data, plan):
         require(group['variables'] and group['variants'], 'Empty variable or variant list')
         # One variable name may sit at several atoms of the molecule (the same
         # substituent drawn twice); every listed atom gets the row's value.
-        positions, used_atoms = {}, set()
+        # An atom is either the variable itself ([R]) or a composite label that embeds it ([OR]);
+        # composite atoms get each row's value spliced in below.
+        positions, used_atoms, composite_at = {}, set(), {}
         for variable in group['variables']:
             i, j = atom(mid, variable['atom_id'])
             name = variable['name']
+            symbol = variable['expected_symbol']
             require(j not in used_atoms, 'Duplicate atom in group')
-            require(edited[i]['symbols'][j] == variable['expected_symbol'], 'Variable precondition failed after OCR/definitions')
-            require(variable['expected_symbol'] == f'[{name}]' and VARIABLE.fullmatch(variable['expected_symbol']), 'Variable name/symbol mismatch or unsupported variable')
+            require(edited[i]['symbols'][j] == symbol, 'Variable precondition failed after OCR/definitions')
+            if not (symbol == f'[{name}]' and VARIABLE.fullmatch(symbol)):
+                require(composite_variable(symbol, name), 'Variable name/symbol mismatch or unsupported variable')
+                composite_at[j] = symbol
             positions.setdefault(name, []).append(j)
             used_atoms.add(j)
         i = mols[mid]['source_bbox_index']
-        require({j for j, s in enumerate(edited[i]['symbols']) if VARIABLE.fullmatch(s)} == used_atoms,
+        require({j for j, s in enumerate(edited[i]['symbols']) if VARIABLE.fullmatch(s)} == used_atoms - set(composite_at),
                 'Expansion must cover every local variable atom; unresolved nesting requires review')
         cooked = []
         for variant in group['variants']:
@@ -562,8 +591,19 @@ def process(data, plan):
                 bindings[name] = value
                 equations.append(f'{cid}: {name} = {literal}')
             require(set(bindings) == set(positions), 'Every variant must bind all local variables once')
+            spliced = {}
+            for name, value in bindings.items():
+                for j in positions[name]:
+                    if j not in composite_at:
+                        continue
+                    token = next((cand for cand in composite_candidates(composite_at[j], name, value[1:-1], taken=set(positions) | defined_names)
+                                  if composite_token_ok(cand)), None)
+                    require(token is not None, f'Composite label {composite_at[j]} cannot take {name} = {value} for {cid}')
+                    spliced[j] = token
+                    audit.append({'operation': 'expand_composite', 'compound_id': cid, 'molecule_id': mid, 'symbol_index': j,
+                                  'name': name, 'original': composite_at[j], 'value': token})
             compound_ids.add(cid)
-            cooked.append((variant, bindings))
+            cooked.append((variant, bindings, spliced))
         groups[mid] = (group, positions, cooked)
 
     # 5. Decisions: required for every molecule that still carries a variable
@@ -592,11 +632,11 @@ def process(data, plan):
             provenance.append({'output_index': len(out) - 1, 'source_bbox_index': i})
             continue
         group, positions, variants = groups[mid]
-        for variant, bindings in variants:
+        for variant, bindings, spliced in variants:
             molecule = copy.deepcopy(box)
             for name, value in bindings.items():
                 for j in positions[name]:
-                    molecule['symbols'][j] = value
+                    molecule['symbols'][j] = spliced.get(j, value)
             mi = len(out)
             out.append(molecule)
             tid = group['source_text_id']
