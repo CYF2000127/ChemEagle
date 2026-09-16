@@ -75,9 +75,6 @@ _INVALID_TOKENS = {"", "none", "null", "n/a", "na", "?", "*"}
 
 @functools.lru_cache(maxsize=1_000_000)
 def canon_smiles(smi: Any) -> Optional[str]:
-
-    keep_stereo = False     # True = stereo centres must match.
-
     if smi is None:
         return None
     if not isinstance(smi, str):
@@ -86,15 +83,22 @@ def canon_smiles(smi: Any) -> Optional[str]:
     if not s or s.lower() in _INVALID_TOKENS:
         return None
     mol = Chem.MolFromSmiles(s)
+    stereo = False   # with or w/o stereo.
+    ions = True     # with or w/o ions.
     if mol is None:
         return None
     try:
+        if not ions:
+            frags = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=False)
+            if len(frags) > 1:
+                mol = max(frags, key=lambda m: m.GetNumHeavyAtoms())
+
         for a in mol.GetAtoms():
             if a.GetAtomicNum() == 0:
                 a.SetIsotope(0)
                 a.SetAtomMapNum(0)
 
-        if keep_stereo:
+        if stereo:
             Chem.AssignStereochemistry(mol, cleanIt=True, force=True)
             for b in mol.GetBonds():
                 b.SetStereo(Chem.BondStereo.STEREONONE)
@@ -111,10 +115,10 @@ def canon_smiles(smi: Any) -> Optional[str]:
             except Exception:
                 pass
 
-        out = Chem.MolToSmiles(mol, canonical=True, isomericSmiles=keep_stereo)
+        out = Chem.MolToSmiles(mol, canonical=True, isomericSmiles=stereo)
         reparsed = Chem.MolFromSmiles(out)
         if reparsed is not None:
-            out = Chem.MolToSmiles(reparsed, canonical=True, isomericSmiles=keep_stereo)
+            out = Chem.MolToSmiles(reparsed, canonical=True, isomericSmiles=stereo)
         return out
     except Exception:
         return None
