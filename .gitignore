@@ -1,0 +1,17 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# local editing backups
+*.bak
+*.orig
+
+# model weights and their download cache (fetched separately, far over GitHub's limit)
+*.ckpt
+.cache/
+
+# runtime scratch: debug dumps, temp inputs, benchmark run directories
+unparsable_json/
+py2opsin_temp_input.txt
+outputs_new_smoke/
+e2e_compare/

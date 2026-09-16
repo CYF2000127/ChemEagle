@@ -27,6 +27,25 @@ RGROUP_SYMBOLS = ['R', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'R1
 
 RGROUP_SYMBOLS = RGROUP_SYMBOLS + [f'[{i}]' for i in RGROUP_SYMBOLS]
 
+# When True, backout_without_coref also registers R sites that sit inside composite labels
+# ([COR2] -> C([2*])=O, [CO2R1] -> C(=O)O[1*]) via the isotope-numbered dummy atoms of the
+# SMILES, on the product-template side and the reactant side. Off by default: the original
+# behaviour registers only atoms whose own symbol is an R-group placeholder.
+BACKOUT_COMPOSITE_SITES = False
+
+
+def _numbered_dummy_sites(smiles, skip_indices=()):
+    """{atom index: '[n*]'} for isotope-numbered dummy atoms with exactly one neighbour."""
+    mol = Chem.MolFromSmiles(smiles) if isinstance(smiles, str) else None
+    out = {}
+    if mol is None:
+        return out
+    for a in mol.GetAtoms():
+        if a.GetAtomicNum() == 0 and a.GetIsotope() > 0 and a.GetDegree() == 1 and a.GetIdx() not in skip_indices:
+            out[a.GetIdx()] = f'[{a.GetIsotope()}*]'
+    return out
+
+
 RGROUP_SMILES = ['[1*]', '[2*]','[3*]', '[4*]','[5*]', '[6*]','[7*]', '[8*]','[9*]', '[10*]','[11*]', '[12*]','[a*]', '[b*]','[c*]', '[d*]','*', '[Rf]']
 
 def get_figures_from_pages(pages, pdfparser):
@@ -808,6 +827,15 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
         #prepare the product template and get the associated mapping
 
         prod_mol_to_query, prod_template_mol_query = get_atom_mapping(prod_mol, prod_smiles, r_sites_reversed = r_sites_reversed)
+
+        # composite labels ([COR2]) are one pseudo-atom in the atoms list, so their R group is not in
+        # r_sites; the SMILES has it as a numbered dummy. Register those as extra sites (query indices).
+        extra_query_sites = {}
+        if BACKOUT_COMPOSITE_SITES:
+            covered = set(prod_mol_to_query[r] for r in r_sites_reversed if r in prod_mol_to_query)
+            extra_query_sites = _numbered_dummy_sites(prod_smiles, skip_indices=covered)
+            num_r_groups += len(extra_query_sites)
+        r_site_names = set(r_sites) | set(extra_query_sites.values())
         
         reactant_mols = []
         
@@ -836,7 +864,7 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
                     if sym[0] == 'R' and sym[1:].isdigit():
                         sym = sym[1:]+"*"
                     sym = f'[{sym}]'
-                if sym in r_sites:
+                if sym in r_site_names:
                     if reactant_mols[-1].GetNumAtoms()==1:
                         reactant_information[idx].append([sym, -1, -1])
                     else: 
@@ -894,6 +922,16 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
                     info[2] = reactant_mol_to_query[info[2]]
                 reactant_mols[-1] = Chem.MolFromSmiles(reactant['smiles'])
 
+            # extra reactant sites from composite labels: numbered dummies of the SMILES that are not
+            # already registered and whose name is an R site of the product template (indices are in
+            # the SMILES molecule, the frame the registered sites were mapped into above)
+            if BACKOUT_COMPOSITE_SITES and reactant_mols[-1] is not None and reactant_mols[-1].GetNumAtoms() > 1:
+                registered = set(info[1] for info in reactant_information[idx])
+                for d_idx, d_name in _numbered_dummy_sites(reactant['smiles'], skip_indices=registered).items():
+                    if d_name in r_site_names:
+                        nbr = reactant_mols[-1].GetAtomWithIdx(d_idx).GetNeighbors()[0].GetIdx()
+                        reactant_information[idx].append([d_name, d_idx, nbr])
+
         #go through all the molecules in the coreference
 
         clean_corefs(coref_results_dict, label_idx)
@@ -939,6 +977,7 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
                                     other_prod_mol = other_prod_frag
                                     break
                             r_sites_reversed_new = {prod_mol_to_query[r]: r_sites_reversed[r] for r in r_sites_reversed}
+                            r_sites_reversed_new.update(extra_query_sites)
 
                             queries = query_enumeration(prod_template_mol_query, r_sites_reversed_new, num_r_groups)
 

@@ -21,6 +21,118 @@ except ImportError:
     RDKIT_AVAILABLE = False
 
 
+# ---------------------------------------------------------------------------
+# Structural repair of unparsable SMILES (2026-09-11)
+# ---------------------------------------------------------------------------
+# The vision models write drawn catalysts and reagents with a few recurring
+# mistakes that make the whole SMILES unreadable, so the compound is lost even
+# though every atom and ring is right:
+#   * a counter-ion bonded into the cation: c1cccc(F[B-](F)(F)F)c1 (BF4- drawn
+#     next to the ring becomes a substituent);
+#   * surplus explicit hydrogens on an atom whose bonds are all written:
+#     Ar[NH2+]2=CN3...;
+#   * double bonds misplaced around a ring heteroatom: [N+]1=CN2C(...)N=1, the
+#     triazolium of NHC precatalysts with two double bonds on one nitrogen;
+#   * a two-letter element outside brackets: c1ccc(SeSec2ccccc2)cc1.
+# The rules only run on a SMILES RDKit cannot read, and a result is accepted
+# only when it sanitizes, so valid SMILES are never touched. Over-valent carbon
+# is left alone: there the intended hydrogen count cannot be recovered.
+_REPAIR_HALOGENS = frozenset({9, 17, 35, 53})
+_REPAIR_ANION_CENTRES = frozenset({5, 13, 15, 33, 51})      # B, Al, P, As, Sb: BF4-, AlCl4-, PF6-, AsF6-, SbF6-
+_REPAIR_RING_ATOMS = frozenset({6, 7, 8, 15, 16, 34})
+_REPAIR_HETEROATOMS = frozenset({7, 8, 15, 16, 34})
+_ORGANIC_FIRST_LETTERS = frozenset("BCNOPSFI")
+_AROMATIC_SECOND_LETTERS = frozenset("bcnops")
+_TWO_LETTER_ELEMENTS = frozenset((
+    "He Li Be Ne Na Mg Al Si Ar Ca Sc Ti Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Kr Rb Sr Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn "
+    "Sb Te Xe Cs Ba La Ce Pr Nd Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn").split())
+_TWO_LETTER_TOKEN = re.compile(r"[A-Z][a-z]")
+
+
+def _bracket_two_letter_elements(smiles: str) -> str:
+    """Se -> [Se] outside brackets, skipping pairs that also read as two organic atoms (Sc, Co, Sn ...)."""
+    def _sub(m):
+        t = m.group(0)
+        if t not in _TWO_LETTER_ELEMENTS or (t[0] in _ORGANIC_FIRST_LETTERS and t[1] in _AROMATIC_SECOND_LETTERS):
+            return t
+        return "[" + t + "]"
+    parts = re.split(r"(\[[^\]]*\])", smiles)
+    return "".join(p if p.startswith("[") else _TWO_LETTER_TOKEN.sub(_sub, p) for p in parts)
+
+
+def _aromatize_ring_around(rw, idx: int) -> bool:
+    """Let RDKit re-place the double bonds of the smallest 5/6 ring holding atom idx."""
+    rings = sorted((tuple(r) for r in Chem.GetSymmSSSR(rw) if idx in r and len(r) in (5, 6)), key=len)
+    for ring in rings:
+        members = set(ring)
+        usable = True
+        for i in ring:
+            atom = rw.GetAtomWithIdx(i)
+            if atom.GetAtomicNum() not in _REPAIR_RING_ATOMS or atom.GetDegree() > 3:
+                usable = False
+                break
+            if any(b.GetOtherAtomIdx(i) not in members and b.GetBondType() != Chem.BondType.SINGLE for b in atom.GetBonds()):
+                usable = False
+                break
+        if not usable:
+            continue
+        for k, i in enumerate(ring):
+            rw.GetAtomWithIdx(i).SetIsAromatic(True)
+            bond = rw.GetBondBetweenAtoms(i, ring[(k + 1) % len(ring)])
+            bond.SetBondType(Chem.BondType.AROMATIC)
+            bond.SetIsAromatic(True)
+        return True
+    return False
+
+
+def _repair_unparsable_smiles(smiles: str) -> str:
+    """Return a sanitizable repair of an unreadable SMILES, or the input unchanged."""
+    if not RDKIT_AVAILABLE or not isinstance(smiles, str) or not smiles:
+        return smiles
+    try:
+        bracketed = _bracket_two_letter_elements(smiles)
+        if bracketed != smiles and Chem.MolFromSmiles(bracketed) is not None:
+            return bracketed
+        mol = Chem.MolFromSmiles(bracketed, sanitize=False)
+        if mol is None:
+            return smiles
+        rw = Chem.RWMol(mol)
+        for _ in range(8):
+            rw.UpdatePropertyCache(strict=False)
+            problems = Chem.DetectChemistryProblems(rw)
+            if not problems:
+                break
+            changed = False
+            for problem in problems:
+                if problem.GetType() != "AtomValenceException":
+                    continue
+                i = problem.GetAtomIdx()
+                atom = rw.GetAtomWithIdx(i)
+                if atom.GetAtomicNum() in _REPAIR_HALOGENS and atom.GetDegree() >= 2:
+                    centres = [n.GetIdx() for n in atom.GetNeighbors()
+                               if n.GetAtomicNum() in _REPAIR_ANION_CENTRES and n.GetFormalCharge() < 0]
+                    if centres:
+                        for j in [n.GetIdx() for n in atom.GetNeighbors() if n.GetIdx() != centres[0]]:
+                            rw.RemoveBond(i, j)
+                        changed = True
+                        break
+                if atom.GetNumExplicitHs() > 0:
+                    atom.SetNumExplicitHs(atom.GetNumExplicitHs() - 1)
+                    changed = True
+                    break
+                if atom.GetAtomicNum() in _REPAIR_HETEROATOMS and _aromatize_ring_around(rw, i):
+                    changed = True
+                    break
+            if not changed:
+                return smiles
+        fixed = rw.GetMol()
+        Chem.SanitizeMol(fixed)
+        out = Chem.MolToSmiles(fixed)
+        return out if Chem.MolFromSmiles(out) is not None else smiles
+    except Exception:
+        return smiles
+
+
 def _validate_and_fix_smiles(smiles: str) -> str:
     if not RDKIT_AVAILABLE or not smiles:
         return smiles
@@ -30,19 +142,12 @@ def _validate_and_fix_smiles(smiles: str) -> str:
             return smiles  # SMILES is valid, no fix needed
     except Exception:
         pass
-    
-    import re
-    
-    n_pattern = r'(?<!\[)N(?!\])'
-    matches = list(re.finditer(n_pattern, smiles))
-    
-    if not matches:
-        return smiles
 
-    for match in matches:
+    # 1) a tetravalent N written without its charge
+    n_pattern = r'(?<!\[)N(?!\])'
+    for match in re.finditer(n_pattern, smiles):
         pos = match.start()
         test_smiles = smiles[:pos] + '[N+]' + smiles[pos+1:]
-        
         try:
             mol = Chem.MolFromSmiles(test_smiles)
             if mol is not None:
@@ -51,7 +156,11 @@ def _validate_and_fix_smiles(smiles: str) -> str:
         except Exception:
             continue
 
-    return smiles
+    # 2) counter-ion bonded in, surplus H, misplaced ring double bonds, unbracketed element
+    repaired = _repair_unparsable_smiles(smiles)
+    if repaired != smiles:
+        print(f"[SMILES Fix] Repaired unparsable SMILES:\n  Original: {smiles}\n  Fixed:    {repaired}")
+    return repaired
 
 
 def fallback_validate_and_fix_smiles_in_dict(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -922,6 +1031,302 @@ def fallback_resolve_reactant_product_smiles_in_data(data: Any) -> Any:
     return data
 
 
+# ---------------------------------------------------------------------------
+# Condition structures shared across the reactions of one figure (2026-09-11)
+# ---------------------------------------------------------------------------
+# A figure draws its catalyst once, but the agents often attach the structure
+# to only some of its reactions: the template row carries "10 mol% B27" with
+# a SMILES while the substrate rows carry the bare name, a "G1 or G7" entry
+# stays empty although G1 and G7 are resolved in the rows below, or substrate
+# rows lose the catalyst entry altogether. Two conservative passes, each
+# confined to the reaction list of one figure:
+#   1. a chemical condition entry without a readable SMILES takes the structure
+#      of the same name (label, else text without amounts) from another
+#      reaction; "G1 or G7" becomes one entry per compound. A name that maps
+#      to two different structures in the figure is left alone.
+#   2. a catalyst drawn only on the reaction that carries the figure's full
+#      catalyst set (typically the template row) is copied to the other
+#      reactions lacking it, when their other conditions are identical (same
+#      reagent/solvent structures, same temperature/time text). A catalyst that
+#      some other reaction already carries is never copied: a template listing
+#      "A1 or B6" over rows that each use one of them means alternatives, not
+#      a missing co-catalyst. A reaction that still names a catalyst without a
+#      structure is left alone.
+# Entries added or completed this way carry "smiles_source".
+import copy as _copy
+
+_CHEMICAL_CONDITION_ROLES = frozenset({'', 'reagent', 'reagents', 'solvent', 'solvents', 'catalyst', 'catalysts'})
+_OUTCOME_CONDITION_ROLES = frozenset({'yield', 'yields', 'ee', 'er', 'dr', 'de', 'selectivity', 'conversion', 'note', 'notes'})
+_CONDITION_AMOUNT_RE = re.compile(
+    r'\(?\s*\d+(?:\.\d+)?\s*(?:mol\s*%|equiv\.?|equiv|eq\.?|mmol|mol|mg|g|mL|ml|uL|M|%)(?![A-Za-z])\s*\)?')
+_CONDITION_NAME_SPLIT_RE = re.compile(r'\s*(?:\bor\b|\band\b|,|;|/|&)\s*', re.I)
+_CATALYST_TEXT_RE = re.compile(r'mol\s*%|\bcat(?:alyst|alytic)?\b', re.I)
+
+
+def _condition_role(item):
+    return str(item.get('role') or '').strip().lower()
+
+
+def _readable_smiles_key(smiles):
+    if not RDKIT_AVAILABLE or not isinstance(smiles, str):
+        return None
+    s = smiles.strip()
+    if not s or s.lower() in ('none', 'null', 'n/a'):
+        return None
+    try:
+        mol = Chem.MolFromSmiles(s)
+    except Exception:
+        return None
+    return Chem.MolToSmiles(mol) if mol is not None else None
+
+
+def _condition_names(item):
+    for field in ('label', 'text'):
+        raw = item.get(field)
+        if not isinstance(raw, str) or not raw.strip() or raw.strip().lower() == 'none':
+            continue
+        names = [n.strip(' .:') for n in _CONDITION_NAME_SPLIT_RE.split(_CONDITION_AMOUNT_RE.sub(' ', raw))]
+        names = [n for n in names if n]
+        if names:
+            return names
+    return []
+
+
+def _is_catalyst_entry(item):
+    role = _condition_role(item)
+    if role in ('catalyst', 'catalysts'):
+        return True
+    if role not in _CHEMICAL_CONDITION_ROLES:
+        return False
+    return bool(_CATALYST_TEXT_RE.search(' '.join(str(item.get(k) or '') for k in ('text', 'label'))))
+
+
+def _fill_condition_structures_by_name(rows):
+    by_name = {}
+    for row in rows:
+        for item in row['conditions']:
+            if not isinstance(item, dict) or _condition_role(item) not in _CHEMICAL_CONDITION_ROLES:
+                continue
+            key = _readable_smiles_key(item.get('smiles'))
+            names = _condition_names(item)
+            if key and len(names) == 1:
+                by_name.setdefault(names[0].lower(), {}).setdefault(key, item['smiles'])
+    filled = 0
+    for row in rows:
+        out = []
+        for item in row['conditions']:
+            if (isinstance(item, dict) and _condition_role(item) in _CHEMICAL_CONDITION_ROLES
+                    and not _readable_smiles_key(item.get('smiles'))):
+                names = _condition_names(item)
+                found = [by_name.get(n.lower(), {}) for n in names]
+                if names and all(len(f) == 1 for f in found):
+                    for name, f in zip(names, found):
+                        new_item = dict(item)
+                        new_item.pop('smiles_unresolved', None)
+                        new_item['smiles'] = next(iter(f.values()))
+                        if len(names) > 1:
+                            new_item['label'] = name
+                        new_item['smiles_source'] = 'same compound in another reaction of this figure'
+                        out.append(new_item)
+                    filled += 1
+                    continue
+            out.append(item)
+        row['conditions'] = out
+    return filled
+
+
+def _condition_block_signature(row):
+    structures, texts = set(), set()
+    for item in row['conditions']:
+        if not isinstance(item, dict) or _is_catalyst_entry(item):
+            continue
+        role = _condition_role(item)
+        if role in _CHEMICAL_CONDITION_ROLES:
+            key = _readable_smiles_key(item.get('smiles'))
+            if key:
+                structures.add(key)
+        elif role not in _OUTCOME_CONDITION_ROLES:
+            texts.add((role, re.sub(r'\s+', '', str(item.get('text') or '')).lower()))
+    return frozenset(structures), frozenset(texts)
+
+
+def _propagate_catalyst_entries(rows):
+    info = []
+    for row in rows:
+        own, every, unresolved = {}, set(), False
+        for c in row['conditions']:
+            if not isinstance(c, dict) or not _is_catalyst_entry(c):
+                continue
+            key = _readable_smiles_key(c.get('smiles'))
+            if not key:
+                unresolved = True
+                continue
+            every.add(key)
+            if not c.get('smiles_source'):
+                own.setdefault(key, c)
+        info.append((own, every, unresolved, _condition_block_signature(row)))
+    full = set().union(*(set(own) for own, _, _, _ in info))
+    is_source = [bool(full) and set(own) == full for own, _, _, _ in info]
+    if not any(is_source):
+        return 0
+    elsewhere = set().union(*(set(own) for (own, _, _, _), src in zip(info, is_source) if not src))
+    exclusive = full - elsewhere
+    if not exclusive:
+        return 0
+    sources = [(own, block) for (own, _, _, block), src in zip(info, is_source) if src]
+    added = 0
+    for row, (own, every, unresolved, block), src in zip(rows, info, is_source):
+        missing = exclusive - every
+        if src or not missing or unresolved or not block[0]:
+            continue
+        match = next((cand for cand, cand_block in sources if cand_block == block), None)
+        if match is None:
+            continue
+        copies = []
+        for key in sorted(missing):
+            new_item = _copy.deepcopy(match[key])
+            new_item['smiles_source'] = 'catalyst of another reaction of this figure'
+            copies.append(new_item)
+        row['conditions'] = copies + row['conditions']
+        added += 1
+    return added
+
+
+_LABEL_TOKEN_RE = re.compile(r"^([A-Za-z]{0,4}\s?[-–]?\s?\d{1,3}[a-z]{0,3}'?|[A-Za-z]{1,4}\d{0,2}'?)")
+
+
+def _label_tokens(texts):
+    """The labels an [Idt] box carries: the whole line plus its leading token
+    ("5 (NHC 5'. HBF4)" gives "5 (NHC 5'. HBF4)" and "5")."""
+    items = texts if isinstance(texts, (list, tuple)) else [texts]
+    out = []
+    for raw in items:
+        text = str(raw or '').strip()
+        if not text:
+            continue
+        out.append(text)
+        m = _LABEL_TOKEN_RE.match(text)
+        if m and m.group(1).strip():
+            out.append(m.group(1).strip())
+    return out
+
+
+def drawn_labels_from_mol_result(mol_result):
+    """(label -> drawn SMILES) for one figure, taken from the molecule agent's [Mol]/[Idt] corefs.
+
+    Generic templates (a SMILES with a wildcard) are skipped: they stand for a whole substituent
+    table, not for the compound the label names.
+    """
+    found = {}
+    for item in mol_result or []:
+        if not isinstance(item, dict):
+            continue
+        boxes = item.get('bboxes') or []
+        for pair in item.get('corefs') or []:
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                continue
+            mi, ii = pair[0], pair[1]
+            if not isinstance(mi, int) or not isinstance(ii, int) or mi >= len(boxes) or ii >= len(boxes):
+                continue
+            smiles, texts = boxes[mi].get('smiles'), boxes[ii].get('text')
+            if not smiles or not texts or '*' in str(smiles):
+                continue
+            for label in _label_tokens(texts):
+                found.setdefault(label.lower(), smiles)
+    return found
+
+
+_MIN_DRAWN_LABEL_ATOMS = 5
+_DEGENERATE_LOOKUP_ATOMS = 2
+_MAX_DRAWN_LABEL_LEN = 12
+
+
+def _drawn_label_candidates(item, label_map):
+    """Labels of the drawn-structure map that this condition entry names."""
+    names = []
+    raw_label = item.get('label')
+    if isinstance(raw_label, str) and raw_label.strip():
+        names.append(raw_label.strip())
+    names.extend(_condition_names(item))
+    for name in names:
+        hit = label_map.get(name.lower())
+        if hit:
+            return hit
+    text = ' '.join(str(item.get(k) or '') for k in ('label', 'text'))
+    found = [smi for lab, smi in label_map.items()
+             if re.search(r"(?<![A-Za-z0-9])" + re.escape(lab) + r"(?![A-Za-z0-9'])", text, re.I)]
+    unique = {_readable_smiles_key(smi) or smi for smi in found}
+    return found[0] if len(unique) == 1 else None
+
+
+def attach_drawn_labelled_structures(data, label_map):
+    """Conditions that name a compound drawn in the figure take the drawn structure (in place).
+
+    The molecule agent links every drawn structure to its printed label (get_molecular_agent.
+    register_label_structures). A condition entry naming one of those labels gets that structure even
+    when it already carries one from a name lookup: the drawing is direct evidence of what the figure
+    means by "B (10 mol%)", while the lookup is a guess (it returned elemental boron).
+    """
+    usable = {lab: smi for lab, smi in (label_map or {}).items()
+              if len(lab) <= _MAX_DRAWN_LABEL_LEN and _readable_smiles_key(smi)
+              and Chem.MolFromSmiles(smi).GetNumHeavyAtoms() >= _MIN_DRAWN_LABEL_ATOMS}
+    if not usable:
+        return data
+    _attach_drawn_labels(data, usable)
+    return data
+
+
+def _attach_drawn_labels(node, label_map):
+    if isinstance(node, dict):
+        conditions = node.get('conditions')
+        if isinstance(conditions, list):
+            present = {_readable_smiles_key(it.get('smiles')) for it in conditions
+                       if isinstance(it, dict) and it.get('smiles')}
+            present.discard(None)
+            for item in conditions:
+                if not isinstance(item, dict) or _condition_role(item) not in _CHEMICAL_CONDITION_ROLES:
+                    continue
+                drawn = _drawn_label_candidates(item, label_map)
+                if not drawn:
+                    continue
+                key = _readable_smiles_key(drawn)
+                if key is None or key in present:
+                    continue
+                current = _readable_smiles_key(item.get('smiles'))
+                if current == key:
+                    continue
+                if current is not None and Chem.MolFromSmiles(current).GetNumHeavyAtoms() > _DEGENERATE_LOOKUP_ATOMS:
+                    continue          # the entry already carries a real structure; only degenerate
+                                      # name lookups ("B" -> elemental boron) are replaced
+                item['smiles'] = drawn
+                item['smiles_source'] = 'structure drawn next to this label in the figure'
+                item.pop('smiles_unresolved', None)
+                present.add(key)
+        for value in node.values():
+            _attach_drawn_labels(value, label_map)
+    elif isinstance(node, list):
+        for value in node:
+            _attach_drawn_labels(value, label_map)
+
+
+def propagate_condition_structures_in_data(data):
+    """Share drawn catalyst / labelled reagent structures across the reactions of one figure (in place)."""
+    if isinstance(data, dict):
+        for value in data.values():
+            propagate_condition_structures_in_data(value)
+    elif isinstance(data, list):
+        rows = [it for it in data if isinstance(it, dict) and isinstance(it.get('conditions'), list)]
+        if len(rows) >= 2:
+            try:
+                _fill_condition_structures_by_name(rows)
+                _propagate_catalyst_entries(rows)
+            except Exception as exc:
+                print(f"[condition propagation] skipped: {exc}")
+        for it in data:
+            propagate_condition_structures_in_data(it)
+    return data
+
+
 def _normalize_base_url_for_ipv4(base_url: str) -> str:
     """
     Use IPv4 for localhost to avoid 'Address family not supported by protocol' (errno 97)
@@ -988,7 +1393,7 @@ def _resolve_ordered_agents(agent_list: List[str]):
                 tool = mapped
                 break
         if tool is None:
-            # tolerate tool-style names such as 'get_full_reaction_template'
+            # tolerate tool-style names such as 'get_full_reaction_template_azure'
             normalized = name_lower.replace(' ', '_')
             for mapped in AGENT_NAME_TO_TOOL.values():
                 if mapped in normalized:
@@ -1031,7 +1436,43 @@ def _is_wildcard_symbol(sym):
     return False
 
 
-def _find_sites_in_graph(symbols, edges):
+# MolNexTR drops the central carbon of a drawn ketene R1R2C=C=O and returns R1R2C=O, so the
+# patch below re-inserts it. Until 2026-09-11 it fired on every carbonyl whose other neighbours
+# are all R groups, which turned the generic ketone / aldehyde templates of 104-1, 104-2, 147, 262
+# and two openchemie figures into ketenes. The dropped carbon leaves a trace in the geometry: the
+# predicted C and O then sit two bond lengths apart (1.45 x the molecule's median bond length in
+# 277, 281, 282, 291) while a real carbonyl measures 1.0-1.1 x (104-1, 104-2, 262). A site is now
+# accepted only when the C-O distance is at least KETENE_STRETCH times the median bond length;
+# without coordinates nothing is patched, and the old SMILES-only rewrite '*C(*)=O' -> '*C(*)=C=O'
+# is gone for the same reason.
+KETENE_STRETCH = 1.25
+
+
+def _median_bond_length(coords, edges):
+    lengths = []
+    n = min(len(coords), len(edges))
+    for i in range(n):
+        for j in range(i + 1, n):
+            if j < len(edges[i]) and edges[i][j]:
+                dx = float(coords[i][0]) - float(coords[j][0])
+                dy = float(coords[i][1]) - float(coords[j][1])
+                lengths.append((dx * dx + dy * dy) ** 0.5)
+    if not lengths:
+        return 0.0
+    lengths.sort()
+    m = len(lengths)
+    return lengths[m // 2] if m % 2 else 0.5 * (lengths[m // 2 - 1] + lengths[m // 2])
+
+
+def _find_sites_in_graph(symbols, edges, coords=None, stretch=None):
+    """(carbon, oxygen) pairs of a carbonyl whose other neighbours are all R groups and whose
+    drawn C-O distance is stretched to two bond lengths: a ketene that lost its central carbon."""
+    if coords is None:
+        return []
+    stretch = KETENE_STRETCH if stretch is None else stretch
+    median = _median_bond_length(coords, edges)
+    if median <= 0:
+        return []
     sites = []
     n = len(symbols)
     for i, sym in enumerate(symbols):
@@ -1060,11 +1501,15 @@ def _find_sites_in_graph(symbols, edges):
                     o_idx = j
                     continue
             non_o_neighbours.append(j)
-        if o_idx is None:
+        if o_idx is None or not non_o_neighbours:
             continue
-        if not non_o_neighbours:
+        if not all(_is_wildcard_symbol(symbols[k]) for k in non_o_neighbours):
             continue
-        if all(_is_wildcard_symbol(symbols[k]) for k in non_o_neighbours):
+        if i >= len(coords) or o_idx >= len(coords):
+            continue
+        dx = float(coords[i][0]) - float(coords[o_idx][0])
+        dy = float(coords[i][1]) - float(coords[o_idx][1])
+        if (dx * dx + dy * dy) ** 0.5 >= stretch * median:
             sites.append((i, o_idx))
     return sites
 
@@ -1124,7 +1569,7 @@ def _patch_item_inplace(item, conversion_function, tag=''):
     edges = item.get('edges')
     if not (isinstance(symbols, list) and isinstance(coords, list) and isinstance(edges, list)):
         return False
-    sites = _find_sites_in_graph(symbols, edges)
+    sites = _find_sites_in_graph(symbols, edges, coords)
     if not sites:
         return False
     old_smiles = item.get('smiles')
@@ -1153,11 +1598,7 @@ def _patch_to_reaction(updated_data):
             for item in rxn.get(key, []) or []:
                 if 'symbols' in item and 'coords' in item and 'edges' in item:
                     _patch_item_inplace(item, _convert_graph_to_smiles, tag=f'[rxn:{key}]')
-                else:
-                    sm = item.get('smiles')
-                    if isinstance(sm, str) and sm == '*C(*)=O':
-                        item['smiles'] = '*C(*)=C=O'
-                        print(f"[ketene-patch][rxn:{key}][smiles-only] {sm!r} -> '*C(*)=C=O'")
+                # items without a graph are left alone (2026-09-11): a bare '*C(*)=O' cannot be told from a ketone template
     return updated_data    
 
 
@@ -1170,9 +1611,5 @@ def _patch_to_mol(updated_data):
         for bbox in item.get('bboxes', []) or []:
             if 'symbols' in bbox and 'coords' in bbox and 'edges' in bbox:
                 _patch_item_inplace(bbox, _convert_graph_to_smiles, tag='[mol]')
-            else:
-                sm = bbox.get('smiles')
-                if isinstance(sm, str) and sm == '*C(*)=O':
-                    bbox['smiles'] = '*C(*)=C=O'
-                    print(f"[ketene-patch][mol][smiles-only] {sm!r} -> '*C(*)=C=O'")
+            # bboxes without a graph are left alone (2026-09-11), see _patch_to_reaction
     return updated_data

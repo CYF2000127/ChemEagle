@@ -52,15 +52,16 @@ Here is my step-by-step analysis:
 
 **Step 3: Final JSON Output:**
 
+No explicit R-group equations (of the form X = ABCD) were found in the image, so the list holds the sentinel string.
 ```json
-  {   
-      ## No explicit R-group equations (of the form X = ABCD) were found in the image.
-      'extracted_explicit_rgroup_equations(without any reasoning and infer)': ['No explicit rgroup equation that written as standalone text']
+  {
+      "extracted_explicit_rgroup_equations(without any reasoning and infer)": ["No explicit rgroup equation that written as standalone text"],
 
       "bboxes": [{"category": "[Mol]", "bbox": [0.015, 0.568, 0.25, 0.871], "smiles": "O=C1C[C@H](c2ccccc2)[C@@H](c2ccccc2)NC(=O)N1c1ccccc1", "symbols": ["C", "C", "O", "N", "[Ph]", "C", "O", "N", "[C@@H]", "[Ph]", "[C@H]", "[Ph]"]}, {"category": "[Mol]", "bbox": [0.035, 0.004, 0.24, 0.14], "smiles": "*/C=C/C([H])=O", "symbols": ["C", "[Ar1]", "C", "C", "[H]", "O"]}, {"category": "[Mol]", "bbox": [0.028, 0.181, 0.154, 0.323], "smiles": "*C([H])=O", "symbols": ["C", "[Ar2]", "[H]", "O"]}, {"category": "[Mol]", "bbox": [0.189, 0.181, 0.388, 0.355], "smiles": "*=C(N)Nc1ccccc1", "symbols": ["N", "[Ph]", "C", "N", "[X]"]}, {"category": "[Mol]", "bbox": [0.329, 0.568, 0.628, 0.885], "smiles": "<invalid>", "symbols": ["C", "C", "O", "N", "[Ph]", "C", "O", "N", "[C@@H]", "[4-NO2C6H4]", "[C@H]", "[4-NO2C6H4]"]}, {"category": "[Mol]", "bbox": [0.4, 0.295, 0.665, 0.445], "smiles": "Cc1cc(C)c(N2C=CN(c3c(C)cc(C)cc3C)=C2)c(C)c1.[2H]", "symbols": ["N", "[Mes]", "C", "N", "[Mes]", "C", "C", "[2H]"]}, {"category": "[Idt]", "bbox": [0.511, 0.454, 0.559, 0.511], "text": ["61"]}, {"category": "[Mol]", "bbox": [0.685, 0.041, 0.915, 0.346], "smiles": "<invalid>", "symbols": ["[Ph]", "N", "C", "[X]", "N", "[C@@H]", "[Ar2]", "[C@@H]", "[Ar1]", "C", "C", "O"]}, {"category": "[Idt]", "bbox": [0.827, 0.333, 0.872, 0.381], "text": ["85"]}, {"category": "[Mol]", "bbox": [0.702, 0.569, 0.988, 0.885], "smiles": "<invalid>", "symbols": ["[Ph]", "N", "C", "N", "[C@@H]", "[4-MeOC6H4]", "[C@@H]", "[4-MeC6H4]", "C", "C", "O", "S"]}], 
 
       "corefs": [[5, 6], [7, 8]]
   }
+```
 
 ### Example 2
 **User Input:**
@@ -96,14 +97,15 @@ Here is my step-by-step analysis:
     * **Action:** Replace all `[Ar]` with `[4-OMeC6H4]`.
 
 **Step 3: Final JSON Output:**
+Explicit R-group equations (Ar = 4-OMeC6H4) written as standalone text were found in the image.
 ```json
   {
-      ## Explicit R-group equations (Ar = 4-OMeC6H4) written as standalone text were found in the image.
-      'extracted_explicit_rgroup_equations(without any reasoning and infer)': ['Ar = 4-OMeC6H4']
+      "extracted_explicit_rgroup_equations(without any reasoning and infer)": ["Ar = 4-OMeC6H4"],
       "bboxes": [{"category": "[Mol]", "bbox": [0.066, 0.072, 0.2, 0.287], "smiles": "*/C=C/C([H])=O.C", "symbols": ["C", "C", "[R]", "C", "C", "[H]", "O"]}, {"category": "[Mol]", "bbox": [0.069, 0.677, 0.258, 0.897], "smiles": "*NC(CC(=O)OC)c1ccccc1", "symbols": ["[Ph]", "C", "N", "[4-OMeC6H4]", "C", "[CO2Me]"]}, {"category": "[Mol]", "bbox": [0.094, 0.267, 0.175, 0.393], "smiles": "O=Nc1ccccc1", "symbols": ["N", "[Ph]", "O"]}, {"category": "[Mol]", "bbox": [0.266, 0.678, 0.484, 0.897], "smiles": "*NC(CC(=O)OC)c1c(F)c(F)c(F)c(F)c1F", "symbols": ["C", "[C6F5]", "N", "[4-OMeC6H4]", "C", "[CO2Me]"]}, {"category": "[Mol]", "bbox": [0.356, 0.349, 0.67, 0.607], "smiles": "CC1=C(N2C=CN(C3=C(C(C)C)C=CC=C3C(C)C)=C2)C(C(C)C)=CC=C1", "symbols": ["C", "C", "C", "C", "C", "C", "[iPr]", "C", "N", "C", "N", "C", "C", "[iPr]", "C", "C", "C", "C", "[iPr]", "C", "C"]}, {"category": "[Idt]", "bbox": [0.487, 0.602, 0.53, 0.652], "text": ["G8"]}, {"category": "[Mol]", "bbox": [0.491, 0.678, 0.712, 0.897], "smiles": "<invalid>", "symbols": ["C", "[C4H9]", "N", "[4-OMeC6H4]", "C", "[CO2Me]"]}, {"category": "[Mol]", "bbox": [0.722, 0.679, 0.955, 0.897], "smiles": "*NC(CC(=O)OC)C(=O)OCC", "symbols": ["C", "[EtO2C]", "N", "[4-OMeC6H4]", "C", "[CO2Me]"]}, {"category": "[Mol]", "bbox": [0.726, 0.148, 0.953, 0.306], "smiles": "*NC(*)CC(=O)OC", "symbols": ["C", "[OMe]", "C", "C", "[R]", "N", "[4-OMeC6H4]", "O"]}], 
 
       "corefs": [[4, 5]]
   }
+```
 
 ### Example 3 (R-Group Variant Expansion):
 **User Input:**
@@ -141,13 +143,16 @@ Here is my step-by-step analysis:
 **Step 3: Other Molecule Check**
    No R-groups or equations apply to them. Keep as is.
 **Step 4: Final JSON Output:**
+Explicit R-group equations (R = F, 89% (5e); R = Cl, 93% (5g); R = Br, 90% (5g)) written as standalone text were found in the image. The reply keeps the same top-level shape as Examples 1 and 2: one JSON object holding the equation list, "bboxes" and "corefs". Never wrap it in a list.
 ```json
-{
-## Explicit R-group equations (R = F, 89% (5e); R = Cl, 93% (5g); R = Br, 90% (5g)) written as standalone text were found in the image.
-      'extracted_explicit_rgroup_equations(without any reasoning and infer)': ['R = F, 89% (5e); R = Cl, 93% (5g); R = Br, 90% (5g)']
-  [{"bboxes": [{"category": "[Mol]", "bbox": [0.03, 0.136, 0.325, 0.234], "smiles": "Cc1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "[Me]", "C", "C", "C", "C", "C", "O", "C", "C", "N", "[Ts]", "O", "C", "C"]}, {"category": "[Idt]", "bbox": [0.138, 0.237, 0.268, 0.261], "text": ["97% (5b)"]}, {"category": "[Mol]", "bbox": [0.043, 0.011, 0.356, 0.098], "smiles": "[1*]C(=O)CN(C([2*])C([3*])O[Si](C)(C)C(C)(C)CC)S(=O)(=O)c1ccc(C)cc1", "symbols": ["N", "[Ts]", "C", "C", "[R1]", "O", "C", "[R2]", "C", "[OTBS]", "[R3]"]}, {"category": "[Idt]", "bbox": [0.163, 0.098, 0.196, 0.118], "text": []}, ###***{"category": "[Mol]", "bbox": [0.051, 0.269, 0.325, 0.366], "smiles": "*c1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "O", "C", "C", "C", "C", "C", "C", "[F]", "C", "C", "O", "N", "[Ts]", "C"]},{"category": "[Mol]", "bbox": [0.051, 0.269, 0.325, 0.366], "smiles": "*c1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "O", "C", "C", "C", "C", "C", "C", "[Cl]", "C", "C", "O", "N", "[Ts]", "C"]},{"category": "[Mol]", "bbox": [0.051, 0.269, 0.325, 0.366], "smiles": "*c1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "O", "C", "C", "C", "C", "C", "C", "[Br]", "C", "C", "O", "N", "[Ts]", "C"]},{"category": "[Mol]", "bbox": [0.051, 0.269, 0.325, 0.366], "smiles": "*c1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "O", "C", "C", "C", "C", "C", "C", "[CN]", "C", "C", "O", "N", "[Ts]", "C"]} ***###, {"category": "[Idt]", "bbox": [0.339, 0.278, 0.575, 0.366], "text": ["R = F, 89% (5e); R = Cl, 93% (5g); R = Br, 90% (5g),R = CN, 92% (5j)"]}, {"category": "[Mol]", "bbox": [0.065, 0.4, 0.352, 0.49], "smiles": "Cc1ccc(S(=O)(=O)N2CCOC2C(=O)c2cccc(Cl)c2)cc1", "symbols": ["N", "[Ts]", "C", "C", "C", "C", "C", "C", "C", "Cl", "C", "O", "O", "C", "C"]},  {"category": "[Idt]", "bbox": [0.158, 0.496, 0.283, 0.519], "text": ["89% (5i)"]}, ... ], "corefs": [[0, 1], [2, 3], .....]}]
+  {
+      "extracted_explicit_rgroup_equations(without any reasoning and infer)": ["R = F, 89% (5e); R = Cl, 93% (5g); R = Br, 90% (5g)"],
 
- }
-between ###*** ***### is the updated molecules. (one replace the [R] and add three new molecules) Please ensure that all other information and data remain unchanged, especially the ***number in coordinates***
+      "bboxes": [{"category": "[Mol]", "bbox": [0.03, 0.136, 0.325, 0.234], "smiles": "Cc1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "[Me]", "C", "C", "C", "C", "C", "O", "C", "C", "N", "[Ts]", "O", "C", "C"]}, {"category": "[Idt]", "bbox": [0.138, 0.237, 0.268, 0.261], "text": ["97% (5b)"]}, {"category": "[Mol]", "bbox": [0.043, 0.011, 0.356, 0.098], "smiles": "[1*]C(=O)CN(C([2*])C([3*])O[Si](C)(C)C(C)(C)CC)S(=O)(=O)c1ccc(C)cc1", "symbols": ["N", "[Ts]", "C", "C", "[R1]", "O", "C", "[R2]", "C", "[OTBS]", "[R3]"]}, {"category": "[Idt]", "bbox": [0.163, 0.098, 0.196, 0.118], "text": []}, {"category": "[Mol]", "bbox": [0.051, 0.269, 0.325, 0.366], "smiles": "*c1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "O", "C", "C", "C", "C", "C", "C", "[F]", "C", "C", "O", "N", "[Ts]", "C"]},{"category": "[Mol]", "bbox": [0.051, 0.269, 0.325, 0.366], "smiles": "*c1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "O", "C", "C", "C", "C", "C", "C", "[Cl]", "C", "C", "O", "N", "[Ts]", "C"]},{"category": "[Mol]", "bbox": [0.051, 0.269, 0.325, 0.366], "smiles": "*c1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "O", "C", "C", "C", "C", "C", "C", "[Br]", "C", "C", "O", "N", "[Ts]", "C"]},{"category": "[Mol]", "bbox": [0.051, 0.269, 0.325, 0.366], "smiles": "*c1ccc(C(=O)C2OCCN2S(=O)(=O)c2ccc(C)cc2)cc1", "symbols": ["C", "O", "C", "C", "C", "C", "C", "C", "[CN]", "C", "C", "O", "N", "[Ts]", "C"]}, {"category": "[Idt]", "bbox": [0.339, 0.278, 0.575, 0.366], "text": ["R = F, 89% (5e); R = Cl, 93% (5g); R = Br, 90% (5g),R = CN, 92% (5j)"]}, {"category": "[Mol]", "bbox": [0.065, 0.4, 0.352, 0.49], "smiles": "Cc1ccc(S(=O)(=O)N2CCOC2C(=O)c2cccc(Cl)c2)cc1", "symbols": ["N", "[Ts]", "C", "C", "C", "C", "C", "C", "C", "Cl", "C", "O", "O", "C", "C"]},  {"category": "[Idt]", "bbox": [0.158, 0.496, 0.283, 0.519], "text": ["89% (5i)"]}, ... ],
+
+      "corefs": [[0, 1], [2, 3], .....]
+  }
+```
+The four expanded molecules (one replaces the [R] and three new molecules are added) are the entries at bbox [0.051, 0.269, 0.325, 0.366] whose symbols carry [F], [Cl], [Br] and [CN]. Please ensure that all other information and data remain unchanged, especially the ***number in coordinates***
 
 

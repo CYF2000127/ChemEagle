@@ -5,7 +5,7 @@ import re
 ORGANIC_SET = {'B', 'C', 'N', 'O', 'P', 'S', 'F', 'Cl', 'Br', 'I'}
 
 RGROUP_SYMBOLS = ['R', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'R10', 'R11', 'R12',
-                  'Ra', 'Rb', 'Rc', 'Rd', 'Rf', 'X', 'Y', 'Z', 'Q', 'A', 'E', 'Ar', 'Ar1', 'Ar2', 'Ari', 'Ar3', 'Ar4','Ar5','Ar6','Ar7',"R'", 
+                  'Ra', 'Rb', 'Rc', 'Rd', 'Rf', 'X', 'Y', 'Z', 'X1', 'X2', 'X3', 'X4', 'Y1', 'Y2', 'Y3', 'Y4', 'Z1', 'Z2', 'Z3', 'Z4', 'Q', 'A', 'E', 'Ar', 'Ar1', 'Ar2', 'Ari', 'Ar3', 'Ar4','Ar5','Ar6','Ar7',"R'", 
                   '1*', '2*','3*', '4*','5*', '6*','7*', '8*','9*', '10*','11*', '12*','[a*]', '[b*]','[c*]', '[d*]',"EWG",'Nu']
 
 PLACEHOLDER_ATOMS = ["Lv", "Lu", "Nd", "Yb", "At", "Fm", "Er"]
@@ -59,7 +59,8 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['SEM'], '[CH2;D2][CH2][Si]([CH3])([CH3])[CH3]', "[CH2]CSi(C)(C)C", 0.2),
     Substitution(['Suc'], 'C(=O)[CH2][CH2]C(=O)[OH]', "[C](=O)CCC(=O)O", 0.2),
     Substitution(['TBS'], '[Si]([CH3])([CH3])C([CH3])([CH3])[CH3]', "[Si](C)(C)C(C)(C)C", 0.5),
-    Substitution(['OTBS'], 'O[Si](C)(C)C(C)(C)CC', "O[Si](C)(C)C(C)(C)CC", 0.5),
+    Substitution(['OTBS'], 'O[Si](C)(C)C(C)(C)C', "O[Si](C)(C)C(C)(C)C", 0.5),   # was C(C)(C)CC (tert-amyl) by mistake
+    Substitution(['Bpin', 'BPin', 'B(pin)', 'pinB', 'PinB', '(pin)B'], 'B1OC(C)(C)C(C)(C)O1', "B1OC(C)(C)C(C)(C)O1", 0.3),
     Substitution(['TBZ'], 'C(=S)[cH]1[cH][cH][cH1][cH][cH]1', "[C](=S)c1ccccc1", 0.2),
     Substitution(['OTf'], '[OH0;D2]S(=O)(=O)C(F)(F)F', "[O]S(=O)(=O)C(F)(F)F", 0.7),
     Substitution(['Tf'], 'S(=O)(=O)C(F)(F)F', "[S](=O)(=O)C(F)(F)F", 0.2),
@@ -148,8 +149,32 @@ SUBSTITUTIONS: List[Substitution] = [
 
 
 
-    Substitution(['Ac'], 'CC(=O)', "CC(=O)", 0.2),
     Substitution(['Me3SiO'], '[O][Si](C)(C)C', "[O][Si](C)(C)C", 0.2),
+    ### acyl groups written as CO-R (not in the table they were parsed as C-O-R with a radical carbon)
+    Substitution(['COMe', 'MeCO', 'C(O)Me'], 'C(=O)[CH3]', "[C](=O)C", 0.2),
+    Substitution(['COEt', 'EtCO', 'C(O)Et'], 'C(=O)[CH2][CH3]', "[C](=O)CC", 0.2),
+    Substitution(['COnPr', 'COPr', 'nPrCO', 'PrCO'], 'C(=O)[CH2][CH2][CH3]', "[C](=O)CCC", 0.2),
+    Substitution(['COiPr', 'iPrCO'], 'C(=O)[CH1]([CH3])[CH3]', "[C](=O)C(C)C", 0.2),
+    Substitution(['COtBu', 'tBuCO', 'Piv'], 'C(=O)C([CH3])([CH3])[CH3]', "[C](=O)C(C)(C)C", 0.2),
+    Substitution(['COPh', 'PhCO'], 'C(=O)[cH0]1[cH][cH][cH][cH][cH]1', "[C](=O)c1ccccc1", 0.2),
+    Substitution(['COBn', 'BnCO'], 'C(=O)[CH2][cH0]1[cH][cH][cH][cH][cH]1', "[C](=O)Cc1ccccc1", 0.2),
+    Substitution(['COCy', 'CyCO'], 'C(=O)[CH1]1[CH2][CH2][CH2][CH2][CH2]1', "[C](=O)C1CCCCC1", 0.2),
+    Substitution(['OPiv'], '[OH0;D2]C(=O)C([CH3])([CH3])[CH3]', "[O]C(=O)C(C)(C)C", 0.3),
+    ### naphthyl, THP, N-protected amines, longer alkyls (were expanded to a wildcard)
+    Substitution(['1-Npth', '1-Naph', 'Npth', 'Naph', '1-Np', 'a-Naph'], '[cH0]1[cH][cH][cH]c2[cH][cH][cH][cH]c12', "[c]1cccc2ccccc12", 0.3),
+    Substitution(['2-Npth', '2-Naph', '2-Np', 'b-Naph'], '[cH0]1[cH][cH]c2[cH][cH][cH][cH]c2[cH]1', "[c]1ccc2ccccc2c1", 0.3),
+    Substitution(['OTHP'], '[OH0;D2][CH1]1[CH2][CH2][CH2][CH2]O1', "[O]C1CCCCO1", 0.3),
+    Substitution(['THP'], '[CH1]1[CH2][CH2][CH2][CH2]O1', "[CH]1CCCCO1", 0.2),
+    Substitution(['NMeBoc', 'NBocMe', 'N(Me)Boc'], '[NH0;D3]([CH3])C(=O)OC([CH3])([CH3])[CH3]', "[N](C)C(=O)OC(C)(C)C", 0.3),
+    Substitution(['NHCbz'], '[NH1;D2]C(=O)OC[cH0]1[cH][cH][cH][cH][cH]1', "[NH]C(=O)OCc1ccccc1", 0.3),
+    Substitution(['Pent', 'nPent', 'n-Pent', 'Pen'], '[CH2;D2][CH2][CH2][CH2][CH3]', "[CH2]CCCC", 0.2),
+    Substitution(['iPent', 'i-Pent', 'isoPent'], '[CH2;D2][CH2][CH1]([CH3])[CH3]', "[CH2]CC(C)C", 0.2),
+    Substitution(['neoPent', 'neo-Pent'], '[CH2;D2]C([CH3])([CH3])[CH3]', "[CH2]C(C)(C)C", 0.2),
+    Substitution(['Hept', 'nHept', 'n-Hept'], '[CH2;D2][CH2][CH2][CH2][CH2][CH2][CH3]', "[CH2]CCCCCC", 0.2),
+    Substitution(['Hex', 'nHex', 'n-Hex'], '[CH2;D2][CH2][CH2][CH2][CH2][CH3]', "[CH2]CCCCC", 0.2),
+    Substitution(['Oct', 'nOct', 'n-Oct'], '[CH2;D2][CH2][CH2][CH2][CH2][CH2][CH2][CH3]', "[CH2]CCCCCCC", 0.2),
+    Substitution(['Non', 'nNon', 'n-Non'], '[CH2;D2][CH2][CH2][CH2][CH2][CH2][CH2][CH2][CH3]', "[CH2]CCCCCCCC", 0.2),
+    Substitution(['Dec', 'nDec', 'n-Dec'], '[CH2;D2][CH2][CH2][CH2][CH2][CH2][CH2][CH2][CH2][CH3]', "[CH2]CCCCCCCCC", 0.2),
     Substitution(['CO2CH2Bn'], '[C](=O)O[CH2]c1ccccc1', "[C](=O)O[CH2]c1ccccc1", 0.2),
     Substitution(['NMe'], '[N]C', "[N]C", 0.2),
     Substitution(['TIPS','TlPS'], '[Si](C(C)C)(C(C)C)C(C)C', '[Si](C(C)C)(C(C)C)C(C)C', 0.2),
@@ -170,10 +195,10 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['4-BrC6H4','BrC6H4'], 'c1ccc(Br)cc1', "c1ccc(Br)cc1", 0.4),
     Substitution(['2-BrC6H4'], 'c1c(Br)cccc1', "c1c(Br)cccc1", 0.4),
     Substitution(['3-BrC6H4'], 'c1cc(Br)ccc1', "c1cc(Br)ccc1", 0.4),
-    Substitution(['CF3C6H3', '3,5-CF3C6H3','(CF3)C6H3'], '[C](F)(F)F', "[C](F)(F)F", 0.4),
+    Substitution(['CF3C6H3','(CF3)C6H3'], '[C](F)(F)F', "[C](F)(F)F", 0.4),
     Substitution(['4-CO2MeC6H4'], 'C(=O)Oc1ccc(C)cc1', "[c]1ccc(C(=O)OC)cc1", 0.5),
     Substitution(['3-CO2MeC6H4'], 'C(=O)Oc1cc(C)ccc1', "[c]1cc(C(=O)OC)ccc1", 0.5),
-    Substitution(['1-Napth','Napdh','17Napdh'], 'c1ccc2ccccc2c1', "c1ccc2ccccc2c1",0.5),
+    Substitution(['Napdh','17Napdh'], 'c1ccc2ccccc2c1', "c1ccc2ccccc2c1",0.5),
     Substitution(['2-MeC6H4'], 'c1c(C)cccc1', "c1c(C)cccc1", 0.5),
     Substitution(['3-MeC6H4'], 'c1cc(C)ccc1', "c1cc(C)ccc1", 0.5),
     Substitution(['4-MeC6H4','MeC6H4','AeC6H4','4MeC6H4'], 'c1ccc(C)cc1', "c1ccc(C)cc1", 0.5),
@@ -191,18 +216,18 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['2-thienyl'], '[c]1[s]ccc1', "[c]1[s]ccc1", 0.5),
     Substitution(['2-furyl','Z'], '[c]1occc1', "[c]1occc1", 0.5),
     Substitution(['2-pyridyl'], 'c1ncccc1', "c1ncccc1", 0.5),
-    Substitution(['3-pyridyl'], 'c1ccncc1', "c1ccncc1", 0.5),
+    Substitution(['3-pyridyl'], '[c]1cccnc1', "[c]1cccnc1", 0.5),  # was c1ccncc1 (4-pyridyl)
     Substitution(['2,4-Cl2C6H3','2, 4-Cl2C6H3','Cl2C6H3'], 'c1c(Cl)cc(Cl)cc1', "c1c(Cl)cc(Cl)cc1", 0.5),
 
-    Substitution(['[CF3]2C6H3', '3,5-[CF3]2C6H3','3,5-(CF3)2C6H3'], '[c]1cc(C(F)(F)F)cc(C(F)(F)F)c1', "[c]1cc(C(F)(F)F)cc(C(F)(F)F)c1", 0.4),
+    Substitution(['[CF3]2C6H3', '3,5-[CF3]2C6H3','3,5-(CF3)2C6H3', '3,5-CF3C6H3'], '[c]1cc(C(F)(F)F)cc(C(F)(F)F)c1', "[c]1cc(C(F)(F)F)cc(C(F)(F)F)c1", 0.4),
     Substitution(['B(OH)2','(HO)2B'], '[B]([OH])([OH])', "B(O)O", 0.4),
-    Substitution(['NPhth'], '[N]C(=O)c1ccccc1C(=O)N', "[N]C(=O)c1ccccc1C(=O)N", 0.5),
+    Substitution(['NPhth', 'NPthh'], '[N]1C(=O)c2ccccc2C1=O', "[N]1C(=O)c2ccccc2C1=O", 0.5),  # was open-chain
     Substitution(['1-Nap'], '[c]1cccc2ccccc12', "[c]1cccc2ccccc12", 0.5),
-    Substitution(['PhCH2'], '[C]c1ccccc1', "[C]c1ccccc1", 0.5),
+    Substitution(['PhCH2'], '[CH2]c1ccccc1', "[CH2]c1ccccc1", 0.5),  # was [C]c1ccccc1
    ###NEW
     Substitution(['B(OH)2','B(0H)2'],'B(O)O','B(O)O',0.5),
     Substitution(['CF2H','HF2C','F2C'],'C(F)(F)','C(F)(F)',0.5),
-    Substitution(['SCF3','ScF3','SO3F'],'SC(F)(F)F','SC(F)(F)F',0.5),
+    Substitution(['SCF3','ScF3'],'SC(F)(F)F','SC(F)(F)F',0.5),
     Substitution(['F3'],'(F)(F)F','(F)(F)F',0.5),
     Substitution(['AgSe','AgScF3'],'[Ag+].[S-]C(F)(F)F','[Ag+].[S-]C(F)(F)F',0.5),
     Substitution(['Me3Si'],'[Si](C)(C)C','[Si](C)(C)C',0.5),
@@ -217,7 +242,118 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['n-Pent'],'CCCCC','CCCCC',0.5),
 
     Substitution(['Si(OEt)3'], '[Si](OCC)(OCC)OCC', '[Si](OCC)(OCC)OCC', 0.2),
-    Substitution(['SiPhMe2'], 'C[Si](C)(c1ccccc1', 'C[Si](C)(c1ccccc1', 0.2),
+    Substitution(['SiPhMe2'], '[Si](C)(C)c1ccccc1', '[Si](C)(C)c1ccccc1', 0.2),  # was unparsable
+
+    ### 2026-09-14: spellings found by surveying every symbol of the 324-image benchmark runs
+    ### (analysis_gap/x_symbol_survey.py); each entry checked by expanding it on a graph and against the GT
+    # standalone species (text boxes read as one "molecule")
+    Substitution(['ClO4-', 'ClO4'], "Cl([O-])(=O)(=O)=O", "Cl([O-])(=O)(=O)=O", 0),
+    Substitution(['A-HBF4', '20BF4', '38F4', 'HBF'], 'F[B-](F)(F)F', "F[B-](F)(F)F", 0),  # OCR of BF4 / HBF4
+    Substitution(['AgSCF3'], '[Ag+].[S-]C(F)(F)F', '[Ag+].[S-]C(F)(F)F', 0),
+    Substitution(['KOtBu', 't-BuOK', 'tBuOK'], 'CC(C)(C)[O-].[K+]', 'CC(C)(C)[O-].[K+]', 0),
+    Substitution(['NiCl2'], 'Cl[Ni]Cl', 'Cl[Ni]Cl', 0),
+    Substitution(['CS2'], 'S=C=S', 'S=C=S', 0),
+    Substitution(['CH3SSO3Na'], 'CSS(=O)(=O)[O-].[Na+]', 'CSS(=O)(=O)[O-].[Na+]', 0),
+    Substitution(['Ph3P+CF2CO2-', 'Ph3PCF2CO2'], '[O-]C(=O)C(F)(F)[P+](c1ccccc1)(c1ccccc1)c1ccccc1', '[O-]C(=O)C(F)(F)[P+](c1ccccc1)(c1ccccc1)c1ccccc1', 0),
+    Substitution(['2-CF3C6H4OH'], 'Oc1ccccc1C(F)(F)F', 'Oc1ccccc1C(F)(F)F', 0),
+    Substitution(['2-MeOC6H4OH'], 'Oc1ccccc1OC', 'Oc1ccccc1OC', 0),
+    Substitution(['2-PhC6H4OH'], 'Oc1ccccc1-c1ccccc1', 'Oc1ccccc1-c1ccccc1', 0),
+    Substitution(['2-i-PrOC6H4OH'], 'Oc1ccccc1OC(C)C', 'Oc1ccccc1OC(C)C', 0),
+    Substitution(['2-i-PrC6H4OH'], 'Oc1ccccc1C(C)C', 'Oc1ccccc1C(C)C', 0),
+    Substitution(['2-t-BuC6H4OH'], 'Oc1ccccc1C(C)(C)C', 'Oc1ccccc1C(C)(C)C', 0),
+    Substitution(['PhOH'], 'Oc1ccccc1', 'Oc1ccccc1', 0),
+    # substituted phenyl: hyphenated, o/m/p and English-name spellings, OCR variants
+    Substitution(['4-bromophenyl', '4-Br-C6H4', 'p-BrC6H4', '4-BrC8H4', 'LrC8H4'], '[c]1ccc(Br)cc1', '[c]1ccc(Br)cc1', 0.3),
+    Substitution(['3-bromophenyl', '3BrC6H4'], '[c]1cccc(Br)c1', '[c]1cccc(Br)c1', 0.3),
+    Substitution(['4-chlorophenyl', '4-Cl-C6H4', 'p-C6H4Cl', 'p-ClC6H4', 'pClC6H4', 'PC6H4Cl'], '[c]1ccc(Cl)cc1', '[c]1ccc(Cl)cc1', 0.3),
+    Substitution(['3-chlorophenyl', '3-Cl-C6H4', '3-ClC6H4', 'm-ClC6H4'], '[c]1cccc(Cl)c1', '[c]1cccc(Cl)c1', 0.3),
+    Substitution(['2-chlorophenyl', '2-Cl-C6H4', 'o-ClC6H4'], '[c]1ccccc1Cl', '[c]1ccccc1Cl', 0.3),
+    Substitution(['4-fluorophenyl', '4-F-C6H4', 'p-FC6H4', 'A-FC6H4'], '[c]1ccc(F)cc1', '[c]1ccc(F)cc1', 0.3),
+    Substitution(['3-fluorophenyl', '3-F-C6H4', '3-FC6H4'], '[c]1cccc(F)c1', '[c]1cccc(F)c1', 0.3),
+    Substitution(['2-fluorophenyl', '2-F-C6H4', '2-FC6H4', 'o-FC6H4'], '[c]1ccccc1F', '[c]1ccccc1F', 0.3),
+    Substitution(['4-methoxyphenyl', '4-MeO-C6H4', 'p-MeOC6H4', 'p-anisyl'], '[c]1ccc(OC)cc1', '[c]1ccc(OC)cc1', 0.3),
+    Substitution(['2-methoxyphenyl', '2-MeO-C6H4', 'o-MeOC6H4'], '[c]1ccccc1OC', '[c]1ccccc1OC', 0.3),
+    Substitution(['4-nitrophenyl', '4-NO2-C6H4', 'p-NO2C6H4'], '[c]1ccc([N+](=O)[O-])cc1', '[c]1ccc([N+](=O)[O-])cc1', 0.3),
+    Substitution(['3-nitrophenyl', '3-NO2-C6H4', '3-NO2C6H4'], '[c]1cccc([N+](=O)[O-])c1', '[c]1cccc([N+](=O)[O-])c1', 0.3),
+    Substitution(['2-nitrophenyl', '2-NO2-C6H4', '2-NO2C6H4'], '[c]1ccccc1[N+](=O)[O-]', '[c]1ccccc1[N+](=O)[O-]', 0.3),
+    Substitution(['4-tolyl', 'p-tolyl', '4-Tol', 'p-Tol', 'P-Tol', 'PTol', 'PoTol', 'L4MeC6H4'], '[c]1ccc(C)cc1', '[c]1ccc(C)cc1', 0.3),
+    Substitution(['3-methylphenyl', '3MeC6H4', 'm-MeC6H4', 'm-Tol'], '[c]1cccc(C)c1', '[c]1cccc(C)c1', 0.3),
+    Substitution(['2-methylphenyl', 'o-MeC6H4', 'o-Tol'], '[c]1ccccc1C', '[c]1ccccc1C', 0.3),
+    Substitution(['4-trifluoromethylphenyl', '4-CF3-C6H4', 'p-CF3C6H4'], '[c]1ccc(C(F)(F)F)cc1', '[c]1ccc(C(F)(F)F)cc1', 0.3),
+    Substitution(['3-CF3-C6H4', '3-CF3C6H4'], '[c]1cccc(C(F)(F)F)c1', '[c]1cccc(C(F)(F)F)c1', 0.3),
+    Substitution(['2-CF3-C6H4', '2-CF3C6H4'], '[c]1ccccc1C(F)(F)F', '[c]1ccccc1C(F)(F)F', 0.3),
+    Substitution(['4-cyanophenyl', '4-CN-C6H4', '4-CNC6H4', '4-NCC6H4'], '[c]1ccc(C#N)cc1', '[c]1ccc(C#N)cc1', 0.3),
+    Substitution(['4-isopropylphenyl', '4-i-PrC6H4', '4-iPrC6H4'], '[c]1ccc(C(C)C)cc1', '[c]1ccc(C(C)C)cc1', 0.3),
+    Substitution(['2-i-PrC6H4', '2-iPrC6H4'], '[c]1ccccc1C(C)C', '[c]1ccccc1C(C)C', 0.3),
+    Substitution(['4-tert-butylphenyl', '4-t-BuC6H4', '4-tBuC6H4'], '[c]1ccc(C(C)(C)C)cc1', '[c]1ccc(C(C)(C)C)cc1', 0.3),
+    Substitution(['2-t-BuC6H4', '2-tBuC6H4'], '[c]1ccccc1C(C)(C)C', '[c]1ccccc1C(C)(C)C', 0.3),
+    Substitution(['2-i-PrOC6H4', '2-iPrOC6H4'], '[c]1ccccc1OC(C)C', '[c]1ccccc1OC(C)C', 0.3),
+    Substitution(['2-OHC6H4', '2-HOC6H4'], '[c]1ccccc1O', '[c]1ccccc1O', 0.3),
+    Substitution(['4-carbomethoxyphenyl', '4-MeO2CC6H4'], '[c]1ccc(C(=O)OC)cc1', '[c]1ccc(C(=O)OC)cc1', 0.3),
+    Substitution(['4-CO2EtC6H4', '4-EtO2CC6H4'], '[c]1ccc(C(=O)OCC)cc1', '[c]1ccc(C(=O)OCC)cc1', 0.3),
+    Substitution(['4-COCH3C6H4', '4-MeCOC6H4', '4-AcC6H4'], '[c]1ccc(C(C)=O)cc1', '[c]1ccc(C(C)=O)cc1', 0.3),
+    Substitution(['4-Me2NC6H4', '4-NMe2C6H4'], '[c]1ccc(N(C)C)cc1', '[c]1ccc(N(C)C)cc1', 0.3),
+    Substitution(['2-biphenyl', '2-PhC6H4'], '[c]1ccccc1-c1ccccc1', '[c]1ccccc1-c1ccccc1', 0.3),
+    Substitution(['4-biphenyl', '4-PhC6H4'], '[c]1ccc(-c2ccccc2)cc1', '[c]1ccc(-c2ccccc2)cc1', 0.3),
+    Substitution(['2,6-dimethylC6H3', '2,6-Me2C6H3'], '[c]1c(C)cccc1C', '[c]1c(C)cccc1C', 0.3),
+    Substitution(['2,6-Et2C6H3'], '[c]1c(CC)cccc1CC', '[c]1c(CC)cccc1CC', 0.3),
+    Substitution(['3,4-dichlorophenyl', '3,4-Cl2C6H3'], '[c]1ccc(Cl)c(Cl)c1', '[c]1ccc(Cl)c(Cl)c1', 0.3),
+    Substitution(['3,4-methylenedioxyphenyl', 'benzo-dioxole', 'benzodioxole'], '[c]1ccc2OCOc2c1', '[c]1ccc2OCOc2c1', 0.3),
+    Substitution(['phenyl', 'C6H5'], '[c]1ccccc1', '[c]1ccccc1', 0.3),
+    Substitution(['1-naphthyl', 'alpha-naphthyl', 'α-naphthyl', 'Napthyl-1', 'Napthyl', '1-Napth', 'Napth'], '[c]1cccc2ccccc12', '[c]1cccc2ccccc12', 0.3),  # GT of 146.jpg / 332.jpg: 1-naphthyl
+    Substitution(['2-naphthyl', 'beta-naphthyl', 'β-naphthyl'], '[c]1ccc2ccccc2c1', '[c]1ccc2ccccc2c1', 0.3),
+    Substitution(['C8F6'], '[c]1c(F)c(F)c(F)c(F)c1F', '[c]1c(F)c(F)c(F)c(F)c1F', 0.3),  # OCR of C6F5
+    Substitution(['OC8Cl5'], '[O]c1c(Cl)c(Cl)c(Cl)c(Cl)c1Cl', '[O]c1c(Cl)c(Cl)c(Cl)c(Cl)c1Cl', 0.3),  # OCR of OC6Cl5
+    # heteroaryl
+    Substitution(['2-Thienyl'], '[c]1cccs1', '[c]1cccs1', 0.3),
+    Substitution(['3-thienyl', '3-Thienyl'], '[c]1ccsc1', '[c]1ccsc1', 0.3),
+    Substitution(['2-Furyl', 'Turyl'], '[c]1ccco1', '[c]1ccco1', 0.3),
+    Substitution(['2-(5-(4-ClC6H4)-Furyl)'], '[c]1ccc(-c2ccc(Cl)cc2)o1', '[c]1ccc(-c2ccc(Cl)cc2)o1', 0.3),
+    Substitution(['2-(4,5-Di-Me-Furyl)'], '[c]1cc(C)c(C)o1', '[c]1cc(C)c(C)o1', 0.3),
+    Substitution(['2-(5-Me-Furyl)', '5-Me-2-furyl'], '[c]1ccc(C)o1', '[c]1ccc(C)o1', 0.3),
+    Substitution(['2-Benzofuryl', '2-benzofuryl'], '[c]1cc2ccccc2o1', '[c]1cc2ccccc2o1', 0.3),
+    Substitution(['2-Pyridyl'], '[c]1ccccn1', '[c]1ccccn1', 0.3),
+    Substitution(['4-pyridyl', '4-Pyridyl'], '[c]1ccncc1', '[c]1ccncc1', 0.3),
+    Substitution(['2-pyrrolyl', '2-Pyrryl', '2-pyrryl'], '[c]1ccc[nH]1', '[c]1ccc[nH]1', 0.3),
+    # alkyl, alkenyl, aralkyl
+    Substitution(['n-propyl', 'propyl', 'n-C3H7'], '[CH2]CC', '[CH2]CC', 0.3),  # n-propyl went to a name service and came back as propylamine
+    Substitution(['n-butyl', 'butyl', '1-Butyl'], '[CH2]CCC', '[CH2]CCC', 0.3),
+    Substitution(['n-pentyl', 'pentyl', 'n-C5H11'], '[CH2]CCCC', '[CH2]CCCC', 0.3),
+    Substitution(['methyl', 'Ie'], '[CH3]', '[CH3]', 0.3),  # Ie: OCR of Me (152_image_3_1)
+    Substitution(['ethyl'], '[CH2]C', '[CH2]C', 0.3),
+    Substitution(['tert-butyl', 't-butyl', 'tbutyl'], '[C](C)(C)C', '[C](C)(C)C', 0.3),
+    Substitution(['cyclohexyl', '1-c-C6H11', 'c-C6H11', 'c-Hex'], '[CH]1CCCCC1', '[CH]1CCCCC1', 0.3),
+    Substitution(['p-methoxybenzyl'], '[CH2]c1ccc(OC)cc1', '[CH2]c1ccc(OC)cc1', 0.3),
+    Substitution(['benzyl'], '[CH2]c1ccccc1', '[CH2]c1ccccc1', 0.3),
+    Substitution(['Ph2CH'], '[CH](c1ccccc1)c1ccccc1', '[CH](c1ccccc1)c1ccccc1', 0.3),
+    Substitution(['phenethyl', 'Ph(CH2)2', 'PhCH2CH2'], '[CH2]Cc1ccccc1', '[CH2]Cc1ccccc1', 0.3),
+    Substitution(['(E)-CH=CHPh', 'CH=CHPh', 'styryl'], '[CH]=Cc1ccccc1', '[CH]=Cc1ccccc1', 0.3),
+    Substitution(['1-propenyl', 'Me-CH=CH', 'MeCH=CH'], '[CH]=CC', '[CH]=CC', 0.3),
+    Substitution(['CD3', 'D3C'], '[C]([2H])([2H])[2H]', '[C]([2H])([2H])[2H]', 0.3),
+    Substitution(['CH2CH2(1,3-dithian-2-yl)', 'CH2CH2C1SCCCS1'], '[CH2]CC1SCCCS1', '[CH2]CC1SCCCS1', 0.3),
+    # heteroatom-linked groups
+    Substitution(['Me2NCO', 'CONMe2'], '[C](=O)N(C)C', '[C](=O)N(C)C', 0.3),
+    Substitution(['CORMe'], '[C](=O)C', '[C](=O)C', 0.3),
+    Substitution(['COREt'], '[C](=O)CC', '[C](=O)CC', 0.3),
+    Substitution(['CORPh'], '[C](=O)c1ccccc1', '[C](=O)c1ccccc1', 0.3),
+    Substitution(['NHCOAr'], '[NH]C(=O)*', '[NH]C(=O)*', 0.3),
+    Substitution(['COAr'], '[C](=O)*', '[C](=O)*', 0.3),
+    Substitution(['O-t-Bu', 'Ot-Bu', 't-BuO'], '[O]C(C)(C)C', '[O]C(C)(C)C', 0.3),
+    Substitution(['PvO'], '[O]C(=O)C(C)(C)C', '[O]C(=O)C(C)(C)C', 0.3),  # OCR of PivO
+    Substitution(['OTBi'], '[O][Si](C)(C)C(C)(C)C', '[O][Si](C)(C)C(C)(C)C', 0.3),  # OCR of OTBS
+    Substitution(['OPO((OMe))2'], '[O]P(=O)(OC)OC', '[O]P(=O)(OC)OC', 0.3),
+    Substitution(['BocNH', 'BocH'], '[NH]C(=O)OC(C)(C)C', '[NH]C(=O)OC(C)(C)C', 0.3),
+    Substitution(['CbzH'], '[NH]C(=O)OCc1ccccc1', '[NH]C(=O)OCc1ccccc1', 0.3),  # OCR of CbzHN
+    Substitution(['TsNH'], '[NH]S(=O)(=O)c1ccc(C)cc1', '[NH]S(=O)(=O)c1ccc(C)cc1', 0.3),
+    Substitution(['TfaHN', 'NHTfa', 'TraHN'], '[NH]C(=O)C(F)(F)F', '[NH]C(=O)C(F)(F)F', 0.3),
+    Substitution(['TrHNOC'], '[C](=O)NC(c1ccccc1)(c1ccccc1)c1ccccc1', '[C](=O)NC(c1ccccc1)(c1ccccc1)c1ccccc1', 0.3),
+    Substitution(['PGHN'], '[NH]*', '[NH]*', 0.3),  # PG = any protecting group
+    Substitution(['(CH2)4N', 'N(CH2)4'], '[N]1CCCC1', '[N]1CCCC1', 0.3),
+    Substitution(['H2NO2S'], '[S](=O)(=O)N', '[S](=O)(=O)N', 0.3),
+    Substitution(['SO3F'], '[S](=O)(=O)F', '[S](=O)(=O)F', 0.3),
+    Substitution(['B((PpIn))', 'B(PpIn)', 'B(Ppin)', 'B(pIn)', 'Bpm', 'Bpn'], 'B1OC(C)(C)C(C)(C)O1', "B1OC(C)(C)C(C)(C)O1", 0.3),  # OCR of Bpin
+    Substitution(['BF3K', 'KF3B'], '[B-](F)(F)F.[K+]', '[B-](F)(F)F.[K+]', 0.3),
+    Substitution(['ZrCp2Cl', 'ZrGp2Cl'], '[Zr](Cl)(C1=CC=CC1)C1=CC=CC1', '[Zr](Cl)(C1=CC=CC1)C1=CC=CC1', 0.3),
 ]
 
 ABBREVIATIONS = {abbrv: sub for sub in SUBSTITUTIONS for abbrv in sub.abbrvs}

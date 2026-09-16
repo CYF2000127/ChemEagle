@@ -63,38 +63,45 @@ Clone the following repositories:
 ```
 git clone https://github.com/CYF2000127/ChemEagle
 ```
-#### Option A: Using Azure OpenAI (Cloud-based)
+#### Setup (all options)
 
-1. First create and activate a [conda](https://numdifftools.readthedocs.io/en/stable/how-to/create_virtual_env_with_conda.html) environment with the following command in a Linux, Windows, or MacOS environment (Linux is the most recommended):
+1. Create and activate a [conda](https://numdifftools.readthedocs.io/en/stable/how-to/create_virtual_env_with_conda.html) environment (Linux, Windows or macOS; Linux is the most tested):
 ```bash
 conda create -n chemeagle python=3.10
 conda activate chemeagle
 ```
 
-2. Then install requirements:
+2. Install the requirements:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Download the necessary [models](https://huggingface.co/CYF200127/ChemEAGLEModel/tree/main) and put in the main path.
+3. Download the necessary [models](https://huggingface.co/CYF200127/ChemEAGLEModel/tree/main) and put them in the main path.
 
-4. Set up your Azure OpenAI API key in your environment. Here are two detailed tutorials ([Chinese Version](https://zhuanlan.zhihu.com/p/678367436), [English Version](https://www.datacamp.com/tutorial/azure-openai)) on how to obtain the Azure OpenAI API key and endpoint (Remember to use the API key and the endpoint in the Azure AI Studio).
+#### Option A: ChemEagle (any OpenAI-compatible endpoint, recommended)
+
+`ChemEagle` runs every LLM call through one small client (`llm_client.py`) that speaks the OpenAI
+chat-completions API, so the same code works with OpenAI itself, an API gateway, OpenRouter, or a local
+server (vLLM, Ollama). Any vision model the endpoint serves can be used; the default is
+`gemini-3.7-flash`.
+
+1. Point the client at your endpoint:
 ```bash
-export API_KEY=your-azure-openai-api-key
-export AZURE_ENDPOINT=your-azure-endpoint
-export API_VERSION=your-api-version
+export API_KEY=your-api-key
+export BASE_URL=https://api.openai.com/v1    # optional, this is the default
+export MODEL=gemini-3.7-flash                # optional, this is the default
 ```
 
-5. Run the following code to extract machine-readable chemical data from chemical graphics:
+2. Run:
 ```python
 from main import ChemEagle
-image_path = './examples/1.png'
-results = ChemEagle(image_path)
+
+results = ChemEagle('./examples/1.png')                      # uses MODEL, else gemini-3.7-flash
+results = ChemEagle('./examples/1.png', model_name='gpt-5.6-terra')   # or any other model id
 print(results)
 ```
-All implementations also can run on the colab, we provided a example code [here](https://colab.research.google.com/drive/1pOrBPm_QYgZgeKIDbGULGjsyTuOx5nfD#scrollTo=s-7RdEIbAkvr).
 
-6. Alternatively, run the following code to extract machine-readable chemical data from chemical literature (PDF files) directly:
+To run over a whole PDF instead of a single image:
 ```python
 import os
 from main import ChemEagle
@@ -116,9 +123,11 @@ for fname in sorted(os.listdir(output_dir)):
 print(results)
 ```
 
-#### Option B: Using ChemEagle_OS (Local Deployment with vLLM)
+#### Option B: ChemEagle with a local model (vLLM)
 
-**ChemEagle_OS** is an open-source version that runs locally using vLLM, eliminating the need for cloud API keys.
+The same `ChemEagle` entry point, pointed at a local server instead of a hosted API: vLLM speaks the
+OpenAI chat-completions API, so only `BASE_URL` changes. No cloud key is needed. The model has to be a
+vision model and has to support JSON / structured outputs, which vLLM provides.
 
 ##### Prerequisites
 - NVIDIA GPU with CUDA support (recommended)
@@ -154,16 +163,7 @@ Depending on the model size and architecture (Dense vs. MoE), the VRAM requireme
 *Note 1: Vision-Language models require additional VRAM for vision encoders and high-resolution image context. The estimation includes basic KV Cache, but we recommend reserving an extra 2-4 GB for complex vision tasks.*
 *Note 2: For MoE models, all expert weights must be loaded into memory simultaneously. Therefore, their VRAM footprint depends on the total parameter count, not just the activated parameters.*
 
-1. Setup Python Environment
-```bash
-conda create -n chemeagle python=3.10
-conda activate chemeagle
-pip install -r requirements.txt
-```
-
-2. Download the necessary [models](https://huggingface.co/CYF200127/ChemEAGLEModel/tree/main) and put in the main path.
-
-3. Deploy vLLM Server
+1. Deploy the vLLM server
 
 **For Linux:**
 ```
@@ -203,21 +203,44 @@ docker run -d --gpus all `
 
 
 
-4. After the vLLM server is running, you can use the open source version of ChemEAGLE as follows:
 
+2. Point ChemEagle at the server and run it:
+```bash
+export API_KEY=EMPTY                          # vLLM does not check it, but it must not be empty
+export BASE_URL=http://localhost:8000/v1
+export MODEL=Qwen3-VL-32B-Instruct            # the id you gave --served-model-name
+```
 ```python
-from main import ChemEagle_OS
+from main import ChemEagle
 
-# Using default local vLLM server (http://localhost:8000/v1)
-image_path = './examples/1.png'
-results = ChemEagle_OS(image_path)
+results = ChemEagle('./examples/1.png')
 print(results)
 ```
 
-5. Alternatively, run the following code to extract machine-readable chemical data from chemical literature (PDF files) directly:
+
+#### Option C: ChemEagle_azure (legacy Azure OpenAI route)
+
+
+1. Set up your Azure OpenAI API key in your environment. Here are two detailed tutorials ([Chinese Version](https://zhuanlan.zhihu.com/p/678367436), [English Version](https://www.datacamp.com/tutorial/azure-openai)) on how to obtain the Azure OpenAI API key and endpoint (Remember to use the API key and the endpoint in the Azure AI Studio).
+```bash
+export API_KEY=your-azure-openai-api-key
+export AZURE_ENDPOINT=your-azure-endpoint
+export API_VERSION=your-api-version
+```
+
+2. Run the following code to extract machine-readable chemical data from chemical graphics:
+```python
+from main import ChemEagle_azure
+image_path = './examples/1.png'
+results = ChemEagle_azure(image_path)
+print(results)
+```
+All implementations also can run on the colab, we provided a example code [here](https://colab.research.google.com/drive/1pOrBPm_QYgZgeKIDbGULGjsyTuOx5nfD#scrollTo=s-7RdEIbAkvr).
+
+3. Alternatively, run the following code to extract machine-readable chemical data from chemical literature (PDF files) directly:
 ```python
 import os
-from main import ChemEagle_OS
+from main import ChemEagle_azure
 from pdf_extraction import run_pdf
 pdf_path   = 'your/pdf/path'
 output_dir = 'your/output/dir'
@@ -228,7 +251,7 @@ for fname in sorted(os.listdir(output_dir)):
         continue
     img_path = os.path.join(output_dir, fname)
     try:
-        r = ChemEagle_OS(img_path)
+        r = ChemEagle_azure(img_path)
         r['image_name'] = fname
         results.append(r)
     except Exception as e:
@@ -346,7 +369,6 @@ The input can be any chemical graphics; feel free to try more examples!
 ![visualization](examples/molecules1.png)
 
 ## :warning: Acknowledgement
-1. We use api_version="2024-10-21" with the HKUST Azure OpenAI endpoint as our official closed-source version.
-2. Our code is based on [MolNexTR](https://github.com/CYF2000127/MolNexTR), [MolScribe](https://github.com/thomas0809/MolScribe), [RxnIM](https://github.com/CYF2000127/RxnIM), [RxnScribe](https://github.com/thomas0809/RxNScribe), [ChemNER](https://github.com/Ozymandias314/ChemIENER), [ChemRxnExtractor](https://github.com/jiangfeng1124/ChemRxnExtractor), [AutoAgents](https://github.com/Link-AGI/AutoAgents), and [Azure OpenAI](https://azure.microsoft.com/).
+1. Our code is based on [MolNexTR](https://github.com/CYF2000127/MolNexTR), [MolScribe](https://github.com/thomas0809/MolScribe), [RxnIM](https://github.com/CYF2000127/RxnIM), [RxnScribe](https://github.com/thomas0809/RxNScribe), [ChemNER](https://github.com/Ozymandias314/ChemIENER), [ChemRxnExtractor](https://github.com/jiangfeng1124/ChemRxnExtractor), [AutoAgents](https://github.com/Link-AGI/AutoAgents), and [Azure OpenAI](https://azure.microsoft.com/).
 
 

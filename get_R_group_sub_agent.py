@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 from PIL import Image
 import json
-from get_molecular_agent import process_reaction_image_with_multiple_products_and_text_correctR, process_reaction_image_with_multiple_products_and_text_correctmultiR, process_reaction_image_with_multiple_products_and_text_correctmultiR_OS
-from get_reaction_agent import get_reaction_withatoms_correctR, get_reaction_withatoms_correctR_OS, get_reaction_con, get_reaction_con_OS
+from get_molecular_agent import process_reaction_image_with_multiple_products_and_text_correctR, process_reaction_image_with_multiple_products_and_text_correctmultiR_azure, process_reaction_image_with_multiple_products_and_text_correctmultiR, molecular_agent, pristine_vision_result, extract_molecule_corefs, corrected_vision_boxes
+from get_reaction_agent import get_reaction_withatoms_correctR_azure, get_reaction_con_azure, get_reaction_withatoms_correctR, get_reaction_con
 import sys
 from rxnim import RxnIM
 import json
@@ -17,6 +17,7 @@ import json
 from PIL import Image
 import numpy as np
 from openai import AzureOpenAI,  OpenAI
+import llm_client as llm
 from typing import Optional
 import copy
 from molnextr.chemistry import _convert_graph_to_smiles 
@@ -25,7 +26,6 @@ import io
 import re
 import time
 from openai import InternalServerError, RateLimitError, APIError
-
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -262,7 +262,6 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
     if last_exception:
         raise last_exception
     raise RuntimeError("API call failed, unknown error")
-
 
 
 def _compensate_missing_molecules(gpt_output: dict, results: list, tool_name: str) -> dict:
@@ -619,13 +618,10 @@ def parse_coref_data_with_fallback_with_box(data):
     return results
 
 
-
-
-
 ############################### MOl
-_process_multi_molecular_cache = {}
+_process_multi_molecular_cache_azure = {}
 
-def get_cached_multi_molecular(image_path: str):
+def get_cached_multi_molecular_azure(image_path: str):
     """
     Only truly call once for the same image_path
     process_reaction_image_with_multiple_products_and_text_correctR
@@ -634,22 +630,22 @@ def get_cached_multi_molecular(image_path: str):
     image = Image.open(image_path).convert('RGB')
     image = np.array(image)
     
-    if image_path not in _process_multi_molecular_cache:
-        ##print(f"[get_cached_multi_molecular] Processing image: {image_path}")
-        _process_multi_molecular_cache[image_path] = (
-            process_reaction_image_with_multiple_products_and_text_correctmultiR(image_path)
+    if image_path not in _process_multi_molecular_cache_azure:
+        ##print(f"[get_cached_multi_molecular_azure] Processing image: {image_path}")
+        _process_multi_molecular_cache_azure[image_path] = (
+            process_reaction_image_with_multiple_products_and_text_correctmultiR_azure(image_path)
             ################################model.extract_molecule_corefs_from_figures([image])#############################################################################################
             )
         ##print(f"original output: {model.extract_molecule_corefs_from_figures([image])}")
-    return _process_multi_molecular_cache[image_path]
+    return _process_multi_molecular_cache_azure[image_path]
 
 
-def get_multi_molecular_text_to_correct(image_path: str) -> list:
+def get_multi_molecular_text_to_correct_azure(image_path: str) -> list:
     """
     Tool registered for GPT-4o. Internally no longer directly calls second-level Agent,
     but reuses cached results.
     """
-    coref_results = copy.deepcopy(get_cached_multi_molecular(image_path))
+    coref_results = copy.deepcopy(get_cached_multi_molecular_azure(image_path))
 
     # Delete fields not intended for LLM return as needed
     for item in coref_results:
@@ -666,59 +662,16 @@ def get_multi_molecular_text_to_correct(image_path: str) -> list:
     print(f"[get_multi_molecular_text_to_correct] parsed: {json.dumps(parsed)}")
     return parsed
 
-############################### MOl_OS
-_process_multi_molecular_cache = {}
-
-def get_cached_multi_molecular_OS(image_path: str):
-    """
-    Only truly call once for the same image_path
-    process_reaction_image_with_multiple_products_and_text_correctR
-    and cache the result.
-    """
-    image = Image.open(image_path).convert('RGB')
-    image = np.array(image)
-    
-    if image_path not in _process_multi_molecular_cache:
-        ##print(f"[get_cached_multi_molecular] Processing image: {image_path}")
-        _process_multi_molecular_cache[image_path] = (
-            process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(image_path)
-            #######model.extract_molecule_corefs_from_figures([image])
-            )
-        ##print(f"original output: {model.extract_molecule_corefs_from_figures([image])}")
-    return _process_multi_molecular_cache[image_path]
+_process_multi_molecular_cache_azure = {}
 
 
-def get_multi_molecular_text_to_correct_OS(image_path: str) -> list:
-    """
-    Tool registered for GPT-4o. Internally no longer directly calls second-level Agent,
-    but reuses cached results.
-    """
-    coref_results = copy.deepcopy(get_cached_multi_molecular_OS(image_path))
-
-    # Delete fields not intended for LLM return as needed
-    for item in coref_results:
-        for bbox in item.get("bboxes", []):
-            for key in [
-                "category", "molfile", "symbols",
-                "atoms", "bonds", "category_id", "score", "corefs",
-                "coords", "edges"
-            ]:
-                bbox.pop(key, None)
-
-    # Assume parse_coref_data_with_fallback requires a single dict input
-    parsed = parse_coref_data_with_fallback(coref_results[0])
-    print(f"[get_multi_molecular_text_to_correct] parsed: {json.dumps(parsed)}")
-    return parsed
-
-
-
-def get_multi_molecular_full(image_path: str) -> list:
+def get_multi_molecular_full_azure(image_path: str) -> list:
     '''Returns a list of reactions extracted from the image.'''
     # Open image file
     image = Image.open(image_path).convert('RGB')
     
     # Pass image as input to the model
-    coref_results = process_reaction_image_with_multiple_products_and_text_correctmultiR(image_path)
+    coref_results = process_reaction_image_with_multiple_products_and_text_correctmultiR_azure(image_path)
     #coref_results = model.extract_molecule_corefs_from_figures([image])
     for item in coref_results:
         for bbox in item.get("bboxes", []):
@@ -728,39 +681,21 @@ def get_multi_molecular_full(image_path: str) -> list:
     data = coref_results[0]
     parsed = parse_coref_data_with_fallback(data)
     return parsed
-
-def get_multi_molecular_full_OS(image_path: str) -> list:
-    '''Returns a list of reactions extracted from the image.'''
-    # Open image file
-    image = Image.open(image_path).convert('RGB')
-    
-    # Pass image as input to the model
-    coref_results = process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(image_path)
-    #coref_results = model.extract_molecule_corefs_from_figures([image])
-    for item in coref_results:
-        for bbox in item.get("bboxes", []):
-            for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]: #'atoms'
-                bbox.pop(key, None)  # Safely remove key
-
-    data = coref_results[0]
-    parsed = parse_coref_data_with_fallback(data)
-    return parsed
-
 
 
 ############################### Rxn
-_raw_results_cache = {}
+_raw_results_cache_azure = {}
 
-def get_cached_raw_results(image_path: str):
+def get_cached_raw_results_azure(image_path: str):
     """
     Call get_reaction_withatoms_correctR once and cache the result,
     then reuse the same raw_results afterward.
     """
-    if image_path not in _raw_results_cache:
-        #print(f"[get_cached_raw_results] Processing image: {image_path}")
-        _raw_results_cache[image_path] = get_reaction_withatoms_correctR(image_path)
-        ###############################_raw_results_cache[image_path]= model1.predict_image_file(image_path, molnextr=True, ocr=True)####################################################################
-    return _raw_results_cache[image_path]
+    if image_path not in _raw_results_cache_azure:
+        #print(f"[get_cached_raw_results_azure] Processing image: {image_path}")
+        _raw_results_cache_azure[image_path] = get_reaction_withatoms_correctR_azure(image_path)
+        ###############################_raw_results_cache_azure[image_path]= model1.predict_image_file(image_path, molnextr=True, ocr=True)####################################################################
+    return _raw_results_cache_azure[image_path]
 
 
 # ----------------------------------------
@@ -789,47 +724,19 @@ def get_reaction_from_raw(raw_pred: dict) -> dict:
     return structured
 
 # ----------------------------------------
-# LLM tool: get_reaction
+# LLM tool: get_reaction_azure
 # ----------------------------------------
-def get_reaction(image_path: str) -> dict:
+def get_reaction_azure(image_path: str) -> dict:
     """    
     Returns a structured dictionary of reactions extracted from the image,
     """
     # Reuse cached raw_results
-    raw_results = get_cached_raw_results(image_path)
+    raw_results = get_cached_raw_results_azure(image_path)
     if not raw_results:
         # No reaction detected: return an empty result instead of an IndexError.
         return {}
     raw_pred = raw_results[0]
     return get_reaction_from_raw(raw_pred)
-
-############################### Rxn_OS
-
-def get_cached_raw_results_OS(image_path: str):
-    """
-    Call get_reaction_withatoms_correctR once and cache the result,
-    then reuse the same raw_results afterward.
-    """
-    if image_path not in _raw_results_cache:
-        #print(f"[get_cached_raw_results] Processing image: {image_path}")
-        _raw_results_cache[image_path]= get_reaction_withatoms_correctR_OS(image_path)
-        ######_raw_results_cache[image_path]= model1.predict_image_file(image_path, molnextr=True, ocr=True)####################################################################
-    return _raw_results_cache[image_path]
-
-
-
-def get_reaction_OS(image_path: str) -> dict:
-    """    
-    Returns a structured dictionary of reactions extracted from the image,
-    """
-    # Reuse cached raw_results
-    raw_results = get_cached_raw_results_OS(image_path)
-    if not raw_results:
-        # No reaction detected: return an empty result instead of an IndexError.
-        return {}
-    raw_pred = raw_results[0]
-    return get_reaction_from_raw(raw_pred)
-
 
 
 
@@ -840,10 +747,10 @@ def get_reaction_full(image_path: str) -> dict:
     '''
     image_file = image_path
     raw_prediction = model1.predict_image_file(image_file, molnextr=True, ocr=True)
-    #raw_prediction = get_reaction_withatoms_correctR(image_path)
+    #raw_prediction = get_reaction_withatoms_correctR_azure(image_path)
     return raw_prediction
 
-def get_full_reaction(image_path: str) -> dict:
+def get_full_reaction_azure(image_path: str) -> dict:
     '''
     Returns a structured dictionary of reactions extracted from the image,
     including reactants, conditions, and products, with their smiles, text, and bbox.
@@ -852,7 +759,7 @@ def get_full_reaction(image_path: str) -> dict:
     image_file = image_path
     #raw_prediction = model1.predict_image_file(image_file, molnextr=True, ocr=True)
     # Use original data, including complete information like coords and edges
-    raw_prediction = get_cached_raw_results(image_path)
+    raw_prediction = get_cached_raw_results_azure(image_path)
     # raw_prediction is a list, each element is a reaction dictionary
     for reaction in raw_prediction:
         for section in ("reactants", "products", "conditions"):
@@ -880,53 +787,7 @@ def get_full_reaction(image_path: str) -> dict:
     # data = coref_results[0]
     # parsed = parse_coref_data_with_fallback(data)
     
-    parsed = get_multi_molecular_text_to_correct(image_path)
-
-    combined_result = {
-        "reaction_prediction": raw_prediction,  # is a list
-        "molecule_coref": parsed               # structured molecule recognition result
-    }
-    print(f"combined_result:{combined_result}")
-    return combined_result
-
-def get_full_reaction_OS(image_path: str) -> dict:
-    '''
-    Returns a structured dictionary of reactions extracted from the image,
-    including reactants, conditions, and products, with their smiles, text, and bbox.
-    '''
-    image = Image.open(image_path).convert('RGB')
-    image_file = image_path
-    #raw_prediction = model1.predict_image_file(image_file, molnextr=True, ocr=True)
-    # Use original data, including complete information like coords and edges
-    raw_prediction = get_cached_raw_results_OS(image_path)
-    # raw_prediction is a list, each element is a reaction dictionary
-    for reaction in raw_prediction:
-        for section in ("reactants", "products", "conditions"):
-            for entry in reaction.get(section, []):
-                # 1) Keep coords to three decimal places
-                coords = entry.get("coords")
-                if isinstance(coords, list):
-                    entry["coords"] = [
-                        [round(val, 3) for val in point]
-                        for point in coords
-                    ]
-                # 2) Remove unnecessary fields
-                for key in ("molfile", "atoms", "bonds"):
-                    entry.pop(key, None)
-
-    #raw_prediction =json.dumps(raw_prediction)
-    print(f"raw_prediction:{raw_prediction}")
-
-    # coref_results = model.extract_molecule_corefs_from_figures([image])
-    # for item in coref_results:
-    #     for bbox in item.get("bboxes", []):
-    #         for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]: #'atoms'
-    #             bbox.pop(key, None)  # Safely remove key
-
-    # data = coref_results[0]
-    # parsed = parse_coref_data_with_fallback(data)
-    
-    parsed = get_multi_molecular_text_to_correct_OS(image_path)
+    parsed = get_multi_molecular_text_to_correct_azure(image_path)
 
     combined_result = {
         "reaction_prediction": raw_prediction,  # is a list
@@ -936,11 +797,7 @@ def get_full_reaction_OS(image_path: str) -> dict:
     return combined_result
 
 
-
-
-
-
-def get_full_reaction_template(image_path: str) -> dict:
+def get_full_reaction_template_azure(image_path: str) -> dict:
     '''
     Returns a structured dictionary of reactions extracted from the image,
     including reactants, conditions, and products, with their smiles, text, and bbox.
@@ -948,7 +805,7 @@ def get_full_reaction_template(image_path: str) -> dict:
     image = Image.open(image_path).convert('RGB')
     image_file = image_path
     raw_prediction = model1.predict_image_file(image_file, molnextr=True, ocr=True)
-    ####################raw_prediction = get_reaction_withatoms_correctR(image_path)###############################################################################################
+    ####################raw_prediction = get_reaction_withatoms_correctR_azure(image_path)###############################################################################################
     for reaction in raw_prediction:
         for section in ("reactants", "products", "conditions"):
             for entry in reaction.get(section, []):
@@ -966,49 +823,7 @@ def get_full_reaction_template(image_path: str) -> dict:
     #raw_prediction =json.dumps(raw_prediction)
     print(f"raw_prediction:{raw_prediction}")
     #coref_results = model.extract_molecule_corefs_from_figures([image])
-    coref_results = process_reaction_image_with_multiple_products_and_text_correctmultiR(image_path)
-    for item in coref_results:
-        for bbox in item.get("bboxes", []):
-            for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]: #'atoms'
-                bbox.pop(key, None)  # Safely remove key
-
-    data = coref_results[0]
-    parsed = parse_coref_data_with_fallback(data)
-
-    combined_result = {
-        #"reaction_prediction": raw_prediction,  # is a list
-        "molecule_coref": parsed               # structured molecule recognition result
-    }
-    print(f"combined_result:{combined_result}")
-    return combined_result
-
-def get_full_reaction_template_OS(image_path: str) -> dict:
-    '''
-    Returns a structured dictionary of reactions extracted from the image,
-    including reactants, conditions, and products, with their smiles, text, and bbox.
-    '''
-    image = Image.open(image_path).convert('RGB')
-    image_file = image_path
-    raw_prediction = model1.predict_image_file(image_file, molnextr=True, ocr=True)
-    ####################raw_prediction = get_reaction_withatoms_correctR(image_path)###############################################################################################
-    for reaction in raw_prediction:
-        for section in ("reactants", "products", "conditions"):
-            for entry in reaction.get(section, []):
-                # 1) Keep coords to three decimal places
-                coords = entry.get("coords")
-                if isinstance(coords, list):
-                    entry["coords"] = [
-                        [round(val, 3) for val in point]
-                        for point in coords
-                    ]
-                # 2) Remove unnecessary fields
-                for key in ("molfile", "atoms", "bonds"):
-                    entry.pop(key, None)
-
-    #raw_prediction =json.dumps(raw_prediction)
-    print(f"raw_prediction:{raw_prediction}")
-    #coref_results = model.extract_molecule_corefs_from_figures([image])
-    coref_results = process_reaction_image_with_multiple_products_and_text_correctmultiR_OS(image_path)
+    coref_results = process_reaction_image_with_multiple_products_and_text_correctmultiR_azure(image_path)
     for item in coref_results:
         for bbox in item.get("bboxes", []):
             for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]: #'atoms'
@@ -1025,8 +840,7 @@ def get_full_reaction_template_OS(image_path: str) -> dict:
     return combined_result
 
 
-
-def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict:
+def process_reaction_image_with_product_variant_R_group_azure(image_path: str) -> dict:
     """
     Input a chemical reaction image path, use GPT and OpenChemIE to extract reaction information, and return organized reaction data.
 
@@ -1164,9 +978,9 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
     
 # Step 1: Tool mapping table
     TOOL_MAP = {
-        'get_multi_molecular_text_to_correct': get_multi_molecular_text_to_correct,
-        'get_reaction': get_reaction,
-        'get_reaction_con': get_reaction_con
+        'get_multi_molecular_text_to_correct': get_multi_molecular_text_to_correct_azure,
+        'get_reaction': get_reaction_azure,
+        'get_reaction_con': get_reaction_con_azure
     }
 
     # Step 2: Handle multiple tool calls
@@ -1207,7 +1021,7 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
         })
     #print(f"tool_results:{tool_result}")
 
-    coref_results = get_cached_multi_molecular(image_path)
+    coref_results = get_cached_multi_molecular_azure(image_path)
     annotated_img = draw_mol_bboxes(image_path, coref_results, output_path=None)
     base64_image_1 = encode_image_from_array(annotated_img)
     
@@ -1256,12 +1070,12 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
  
     #coref_results = model.extract_molecule_corefs_from_figures([image_np])
     #coref_results = process_reaction_image_with_multiple_products_and_text_correctR(image_path)
-    #coref_results = get_cached_multi_molecular(image_path)
+    #coref_results = get_cached_multi_molecular_azure(image_path)
 
 
     # reaction_results = model.extract_reactions_from_figures([image_np])
-    #reaction_results = get_reaction_withatoms_correctR(image_path)[0]
-    raw_results  = get_cached_raw_results(image_path)
+    #reaction_results = get_reaction_withatoms_correctR_azure(image_path)[0]
+    raw_results  = get_cached_raw_results_azure(image_path)
     # No reaction detected: fall back to an empty reaction instead of an IndexError.
     reaction_results = raw_results[0] if raw_results else {}
     
@@ -1350,313 +1164,7 @@ def process_reaction_image_with_product_variant_R_group(image_path: str) -> dict
     return toadd
 
 
-def process_reaction_image_with_product_variant_R_group_OS(
-    image_path: str,
-    *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
-    base_url: Optional[str] = "http://localhost:8000/v1",
-    api_key: Optional[str] = None,
-) -> dict:
-    """
-    Aligned with process_reaction_image_with_product_variant_R_group workflow, but uses a local/self-hosted model compatible with OpenAI Chat Completions protocol (such as vLLM or Ollama).
-
-    Args:
-        image_path: reaction image path.
-        model_name: local model name (default `Qwen/Qwen3-VL-8B-Instruct`).
-        base_url: OpenAI-compatible API endpoint; if None, use `http://localhost:8000/v1` (vLLM default port).
-        api_key: API key, can be any non-empty string (vLLM default can be `"EMPTY"`).
-
-    Returns:
-        dict: organized reaction data, including reactants, products, and reaction templates.
-    """
-    base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
-    api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
-
-    client = OpenAI(
-        base_url=base_url,
-        api_key=api_key,
-    )
-
-    # Load image and encode as Base64
-    def encode_image(image_path: str):
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode('utf-8')
-
-    base64_image = encode_image(image_path)
-
-    # GPT tool-calling configuration
-    tools = [
-        {
-            'type': 'function',
-            'function': {
-                'name': 'get_multi_molecular_text_to_correct_OS',
-                'description': 'Extracts the SMILES string and text coref from molecular images.',
-                'parameters': {
-                    'type': 'object',
-                    'properties': {
-                        'image_path': {
-                            'type': 'string',
-                            'description': 'Path to the reaction image.'
-                        }
-                    },
-                    'required': ['image_path'],
-                    'additionalProperties': False
-                }
-            }
-        },
-        {
-        'type': 'function',
-        'function': {
-            'name': 'get_reaction_OS',
-            'description': 'Get a list of reactions from a reaction image. A reaction contains data of the reactants, conditions, and products.',
-            'parameters': {
-                'type': 'object',
-                'properties': {
-                    'image_path': {
-                        'type': 'string',
-                        'description': 'The path to the reaction image.',
-                    },
-                },
-                'required': ['image_path'],
-                'additionalProperties': False,
-            },
-        },
-            },
-            {
-        'type': 'function',
-        'function': {
-            'name': 'get_reaction_con_OS',
-            'description': 'Get a list of reaction conditions from a reaction image',
-            'parameters': {
-                'type': 'object',
-                'properties': {
-                    'image_path': {
-                        'type': 'string',
-                        'description': 'The path to the reaction image.',
-                    },
-                },
-                'required': ['image_path'],
-                'additionalProperties': False,
-            },
-        },
-            }
-    ]
-
-    # Message content provided to GPT
-    with open('./prompt/prompt_Str_R.txt', 'r', encoding='utf-8') as prompt_file:
-        prompt = prompt_file.read()
-    messages = [
-        {'role': 'system', 'content': 'You are a helpful assistant.'},
-        {
-            'role': 'user',
-            'content': [
-                {'type': 'text', 'text': prompt},
-                {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{base64_image}'}}
-            ]
-        }
-    ]
-
-    # Call GPT API (with retry mechanism)
-    response = retry_api_call(
-        client.chat.completions.create,
-        max_retries=5,  # Increase retry count because multiple requests may happen simultaneously
-        base_delay=3,   # Increase base delay to give the API more recovery time
-        backoff_factor=2,
-        model=model_name,
-        temperature=0,
-        #response_format={'type': 'json_object'},
-        messages=messages,
-        tools=tools,
-        tool_choice="auto",
-    )
-    
-    # Step 1: Tool mapping table
-    TOOL_MAP = {
-        'get_multi_molecular_text_to_correct_OS': get_multi_molecular_text_to_correct_OS,
-        'get_reaction_OS': get_reaction_OS,
-        'get_reaction_con_OS':get_reaction_con_OS
-    }
-
-    # Step 2: Handle multiple tool calls
-    tool_calls = response.choices[0].message.tool_calls or []
-    results = []
-
-    # Iterate through each tool call
-    for tool_call in tool_calls:
-        tool_name = tool_call.function.name
-        tool_arguments = tool_call.function.arguments
-        tool_call_id = tool_call.id
-        
-        try:
-            tool_args = json.loads(tool_arguments)
-        except (json.JSONDecodeError, TypeError):
-            # Malformed tool arguments: image_path is used directly below, default to {}.
-            tool_args = {}
-        
-        if tool_name in TOOL_MAP:
-            # Call tool and get result
-            tool_result = TOOL_MAP[tool_name](image_path)
-        else:
-            # Unknown tool name (e.g. VLM drift): skip rather than crash the pipeline.
-            print(f"WARNING [mol_agent]: Unknown tool called: {tool_name}, skipping.")
-            continue
-        
-        # Save each tool-call result
-        results.append({
-            'role': 'tool',
-            'name': tool_name,  # Gemini API requires the name field
-            'content': json.dumps({
-                'image_path': image_path,
-                f'{tool_name}':(tool_result),
-            }),
-            'tool_call_id': tool_call_id,
-        })
-
-    # Prepare the chat completion payload
-    completion_payload = {
-        'model': model_name,
-        'messages': [
-            {'role': 'system', 'content': 'You are a helpful assistant.'},
-            {
-                'role': 'user',
-                'content': [
-                    {
-                        'type': 'text',
-                        'text': prompt
-                    },
-                    {
-                        'type': 'image_url',
-                        'image_url': {
-                            'url': f'data:image/png;base64,{base64_image}'
-                        }
-                    }
-                ]
-            },
-            response.choices[0].message,
-            *results
-            ],
-    }
-
-    # Generate new response (with retry mechanism)
-    response = retry_api_call(
-        client.chat.completions.create,
-        max_retries=5,
-        base_delay=3,
-        backoff_factor=2,
-        model=completion_payload["model"],
-        messages=completion_payload["messages"],
-        response_format={'type': 'json_object'},
-        temperature=0
-    )
-
-    # Get GPT-generated result
-    raw_content = response.choices[0].message.content
-
-    # Check whether content is empty
-    if not raw_content or not raw_content.strip():
-        print(f"ERROR [OS]: Model returned empty content")
-        print(f"Full response object: {response}")
-        raise ValueError("Model returned empty content. Please check the model response.")
-
-    print(f"DEBUG [OS]: Raw content preview (first 500 chars):\n{raw_content[:500]}")
-
-    # Parse JSON
-    gpt_output = None
-
-    try:
-        gpt_output = json.loads(raw_content)
-        print(f"DEBUG [OS]: Successfully parsed JSON directly")
-    except json.JSONDecodeError:
-        print(f"ERROR [OS]: Failed to parse JSON from model response")
-        print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
-        raise json.JSONDecodeError(
-            f"Could not parse JSON from model response. Content may not be valid JSON.",
-            raw_content, 0
-        )
-    
-    print("R_group_agent_output:", gpt_output)
-    gpt_output = _compensate_missing_molecules(gpt_output, results, 'get_multi_molecular_text_to_correct')
-    image = Image.open(image_path).convert('RGB')
-    image_np = np.array(image)
-
-    # Use OS-version caching function
-    coref_results = get_cached_multi_molecular_OS(image_path)
-    raw_results = get_cached_raw_results_OS(image_path)
-    # No reaction detected: fall back to an empty reaction instead of an IndexError.
-    reaction_results = raw_results[0] if raw_results else {}
-    
-    reaction = {
-        "reactants": reaction_results.get('reactants', []),
-        "conditions": reaction_results.get('conditions', []),
-        "products": reaction_results.get('products', [])
-    }
-    reaction_results = [{"reactions": [reaction]}]
-
-    # Define function to update tool output
-    def extract_smiles_details(smiles_data, raw_details):
-        smiles_details = {}
-        for smiles in smiles_data:
-            for detail in raw_details:
-                for bbox in detail.get('bboxes', []):
-                    if bbox.get('smiles') == smiles:
-                        smiles_details[smiles] = {
-                            'category': bbox.get('category'),
-                            'bbox': bbox.get('bbox'),
-                            'category_id': bbox.get('category_id'),
-                            'score': bbox.get('score'),
-                            'molfile': bbox.get('molfile'),
-                            'atoms': bbox.get('atoms'),
-                            'bonds': bbox.get('bonds'),
-                        }
-                        break
-        return smiles_details
-
-    # Get results
-    smiles_details = extract_smiles_details(gpt_output, coref_results)
-
-    reactants_array = []
-    products = []
-
-    for reactant in reaction_results[0]['reactions'][0]['reactants']:
-        if 'smiles' in reactant:
-            reactants_array.append(reactant['smiles'])
-
-    for product in reaction_results[0]['reactions'][0]['products']:
-        products.append(product['smiles'])
-
-    # Organize reaction data
-    backed_out = utils.backout_without_coref(reaction_results, coref_results, gpt_output, smiles_details, model.molnextr)
-    backed_out.sort(key=lambda x: x[2])
-    extracted_rxns = {}
-    for reactants, products_, label in backed_out:
-        extracted_rxns[label] = {'reactants': reactants, 'products': products_}
-    
-    for item in coref_results:
-        for bbox in item.get("bboxes", []):
-            for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]:
-                bbox.pop(key, None)  # Safely remove key
-
-    data = coref_results[0]
-    parsed = parse_coref_data_with_fallback(data)
-    
-    toadd = {
-        "reaction_template": {
-            "reactants": reactants_array,
-            "products": products
-        },
-        "reactions": extracted_rxns,
-        "original_molecule_list": gpt_output
-    }
-
-    # Sort by label
-    sorted_keys = sorted(toadd["reactions"].keys())
-    toadd["reactions"] = {i: toadd["reactions"][i] for i in sorted_keys}
-    toadd = normalize_product_variant_output(toadd)
-    print(f"str_R_group_agent_output:{toadd}")
-    return toadd
-
-
-def process_reaction_image_with_table_R_group(image_path: str) -> dict:
+def process_reaction_image_with_table_R_group_azure(image_path: str) -> dict:
 
     client = AzureOpenAI(
         api_key=API_KEY,
@@ -1722,7 +1230,7 @@ def process_reaction_image_with_table_R_group(image_path: str) -> dict:
     tool_calls = response.choices[0].message.tool_calls or []
     if not tool_calls:
         # No tool call returned: fall back to the only available tool.
-        return get_full_reaction(image_path)
+        return get_full_reaction_azure(image_path)
     tool_call = tool_calls[0]
     tool_name = tool_call.function.name  # modify here
     tool_arguments = tool_call.function.arguments  # newly added here
@@ -1735,12 +1243,12 @@ def process_reaction_image_with_table_R_group(image_path: str) -> dict:
     #image_path = tool_args.get('image_path', image_path)  # Use image_path provided by model
 
     if tool_name == 'get_full_reaction':
-        tool_result = get_full_reaction(image_path)
+        tool_result = get_full_reaction_azure(image_path)
 
     else:
         # Unknown tool name: fall back to the only available tool instead of crashing.
         print(f"WARNING [full_reaction agent]: Unknown tool called: {tool_name}, using get_full_reaction.")
-        tool_result = get_full_reaction(image_path)
+        tool_result = get_full_reaction_azure(image_path)
     #print(tool_result)
 
     # Build tool-call result message
@@ -1904,33 +1412,575 @@ def process_reaction_image_with_table_R_group(image_path: str) -> dict:
     return updated_input
 
 
-def process_reaction_image_with_table_R_group_OS(
+############################### ChemEagle (any OpenAI-compatible endpoint)
+# Caches are keyed by (image_path, model) so that different gateway models can
+# be run on the same image inside one process without reusing each other's
+# molecule / reaction results.
+_process_multi_molecular_cache = {}
+_raw_results_cache = {}
+
+
+_reconciled = set()
+
+
+def _reconcile_graphs(image_path: str, reaction_results):
+    """Cross-check one reaction-result object against the molecular agent (chemietoolkit.mol_edit_plan.reconcile),
+    repairing it in place: an RDKit-invalid graph on the reaction side is replaced by the valid
+    graph of the same box from the molecular agent, and vice versa. Donors for the reaction side
+    are the pristine vision boxes with the plan's symbol corrections replayed (generic templates;
+    expanded variants carry a compound id and are never donors). Runs the cached molecular agent
+    first if it has not run yet (every downstream agent needs it anyway)."""
+    from chemietoolkit.mol_edit_plan.reconcile import reconcile
+    key_m = (image_path, llm.resolve_model())
+    if key_m not in _process_multi_molecular_cache:
+        try:
+            get_cached_multi_molecular(image_path)
+        except Exception as exc:                        # the molecular agent's own caller will surface this failure
+            print(f"[reconcile] molecular agent failed here ({type(exc).__name__}: {str(exc)[:120]}); reaction graphs left unchanged")
+            return []
+    if pristine_vision_result(image_path) is None:
+        extract_molecule_corefs(image_path)              # vision models only; result cached
+    mol_result = _process_multi_molecular_cache.get(key_m)
+    vision_boxes = corrected_vision_boxes(image_path, mol_result)   # generic templates with the plan's OCR fixes replayed
+    mol_boxes = mol_result[0].get('bboxes', []) if mol_result else None
+    has_plan = bool(mol_result and isinstance(mol_result[0], dict) and mol_result[0].get('edit_plan'))
+    audit = reconcile(reaction_results, vision_boxes, mol_boxes=mol_boxes, prefer_final=not has_plan)   # free-form: the rewritten boxes are the OCR-corrected ones
+    n_rx = sum(len(rx.get(sec, []) or []) for rx in reaction_results for sec in ('reactants', 'products', 'conditions'))
+    print(f"[reconcile] checked {n_rx} reaction entries, {len(vision_boxes)} vision boxes, {len(mol_boxes or [])} molecular boxes: {len(audit)} repair(s)")
+    for a in audit:
+        print(f"[reconcile] {a['operation']} bbox={a['bbox']} iou={a['iou']}: {str(a['old_smiles'])[:60]} -> {str(a['new_smiles'])[:60]}")
+    if mol_result:
+        mol_result[0].setdefault('reconcile_audit', []).extend(audit)
+    return audit
+
+
+def _reconcile(image_path: str):
+    """Cross-check the cached reaction-agent result once per (image, model, mol-agent mode) as
+    soon as it exists; if the molecular agent has not run yet it is run first (its cache hook
+    calls back here), so no consumer ever sees an unreconciled reaction graph."""
+    key_r = (image_path, llm.resolve_model())
+    if key_r not in _raw_results_cache:
+        return
+    key_m = (image_path, llm.resolve_model())
+    if key_m in _reconciled:
+        return
+    if key_m not in _process_multi_molecular_cache:
+        try:
+            get_cached_multi_molecular(image_path)  # fills the cache and calls _reconcile again
+        except Exception as exc:                        # the molecular agent's own caller will surface this failure
+            print(f"[reconcile] molecular agent failed here ({type(exc).__name__}: {str(exc)[:120]}); reaction graphs left unchanged")
+        return
+    _reconciled.add(key_m)
+    _reconcile_graphs(image_path, _raw_results_cache[key_r])
+
+
+def get_cached_multi_molecular(image_path: str):
+    """Run process_reaction_image_with_multiple_products_and_text_correctmultiR
+    once per (image_path, model, mol-agent mode) and cache the result."""
+    key = (image_path, llm.resolve_model())
+    if key not in _process_multi_molecular_cache:
+        _process_multi_molecular_cache[key] = molecular_agent(image_path)
+        _reconcile(image_path)
+    return _process_multi_molecular_cache[key]
+
+
+def get_cached_raw_results(image_path: str):
+    """Run get_reaction_withatoms_correctR once per (image_path, model) and
+    cache the result."""
+    key = (image_path, llm.resolve_model())
+    if key not in _raw_results_cache:
+        _raw_results_cache[key] = get_reaction_withatoms_correctR(image_path)
+    _reconcile(image_path)
+    # Consumers (get_full_reaction, the table agent) strip and round entries in place;
+    # hand out a copy so the cached, reconciled graphs stay intact for every later agent.
+    return copy.deepcopy(_raw_results_cache[key])
+def get_multi_molecular_text_to_correct(image_path: str) -> list:
+    """
+    Tool registered for GPT-4o. Internally no longer directly calls second-level Agent,
+    but reuses cached results.
+    """
+    coref_results = copy.deepcopy(get_cached_multi_molecular(image_path))
+
+    # Delete fields not intended for LLM return as needed
+    for item in coref_results:
+        for bbox in item.get("bboxes", []):
+            for key in [
+                "category", "molfile", "symbols",
+                "atoms", "bonds", "category_id", "score", "corefs",
+                "coords", "edges"
+            ]:
+                bbox.pop(key, None)
+
+    # Assume parse_coref_data_with_fallback requires a single dict input
+    parsed = parse_coref_data_with_fallback(coref_results[0])
+    print(f"[get_multi_molecular_text_to_correct] parsed: {json.dumps(parsed)}")
+    return parsed
+
+
+def _loads_lenient(raw_content: str):
+    """Shared lenient parse (fences, raw/mixed backslashes in SMILES E/Z bonds)."""
+    return llm.loads_lenient(raw_content)
+
+
+def get_multi_molecular_full(image_path: str) -> list:
+    '''Returns a list of reactions extracted from the image.'''
+    # Open image file
+    image = Image.open(image_path).convert('RGB')
+    
+    # Pass image as input to the model
+    coref_results = copy.deepcopy(get_cached_multi_molecular(image_path))   # one molecular-agent run per image; reconciled
+    #coref_results = model.extract_molecule_corefs_from_figures([image])
+    for item in coref_results:
+        for bbox in item.get("bboxes", []):
+            for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]: #'atoms'
+                bbox.pop(key, None)  # Safely remove key
+
+    data = coref_results[0]
+    parsed = parse_coref_data_with_fallback(data)
+    return parsed
+
+
+def get_reaction(image_path: str) -> dict:
+    """    
+    Returns a structured dictionary of reactions extracted from the image,
+    """
+    # Reuse cached raw_results
+    raw_results = get_cached_raw_results(image_path)
+    if not raw_results:
+        # No reaction detected: return an empty result instead of an IndexError.
+        return {}
+    raw_pred = raw_results[0]
+    return get_reaction_from_raw(raw_pred)
+
+
+def get_full_reaction(image_path: str) -> dict:
+    '''
+    Returns a structured dictionary of reactions extracted from the image,
+    including reactants, conditions, and products, with their smiles, text, and bbox.
+    '''
+    image = Image.open(image_path).convert('RGB')
+    image_file = image_path
+    #raw_prediction = model1.predict_image_file(image_file, molnextr=True, ocr=True)
+    # Use original data, including complete information like coords and edges
+    raw_prediction = get_cached_raw_results(image_path)
+    # raw_prediction is a list, each element is a reaction dictionary
+    for reaction in raw_prediction:
+        for section in ("reactants", "products", "conditions"):
+            for entry in reaction.get(section, []):
+                # 1) Keep coords to three decimal places
+                coords = entry.get("coords")
+                if isinstance(coords, list):
+                    entry["coords"] = [
+                        [round(val, 3) for val in point]
+                        for point in coords
+                    ]
+                # 2) Remove unnecessary fields
+                for key in ("molfile", "atoms", "bonds"):
+                    entry.pop(key, None)
+
+    #raw_prediction =json.dumps(raw_prediction)
+    print(f"raw_prediction:{raw_prediction}")
+
+    # coref_results = model.extract_molecule_corefs_from_figures([image])
+    # for item in coref_results:
+    #     for bbox in item.get("bboxes", []):
+    #         for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]: #'atoms'
+    #             bbox.pop(key, None)  # Safely remove key
+
+    # data = coref_results[0]
+    # parsed = parse_coref_data_with_fallback(data)
+    
+    parsed = get_multi_molecular_text_to_correct(image_path)
+
+    combined_result = {
+        "reaction_prediction": raw_prediction,  # is a list
+        "molecule_coref": parsed               # structured molecule recognition result
+    }
+    print(f"combined_result:{combined_result}")
+    return combined_result
+
+
+def get_full_reaction_template(image_path: str) -> dict:
+    '''
+    Returns a structured dictionary of reactions extracted from the image,
+    including reactants, conditions, and products, with their smiles, text, and bbox.
+    '''
+    image = Image.open(image_path).convert('RGB')
+    image_file = image_path
+    raw_prediction = model1.predict_image_file(image_file, molnextr=True, ocr=True)
+    _reconcile_graphs(image_path, raw_prediction)   # cross-check against the molecular agent's graphs (see chemietoolkit.mol_edit_plan.reconcile)
+    ####################raw_prediction = get_reaction_withatoms_correctR_azure(image_path)###############################################################################################
+    for reaction in raw_prediction:
+        for section in ("reactants", "products", "conditions"):
+            for entry in reaction.get(section, []):
+                # 1) Keep coords to three decimal places
+                coords = entry.get("coords")
+                if isinstance(coords, list):
+                    entry["coords"] = [
+                        [round(val, 3) for val in point]
+                        for point in coords
+                    ]
+                # 2) Remove unnecessary fields
+                for key in ("molfile", "atoms", "bonds"):
+                    entry.pop(key, None)
+
+    #raw_prediction =json.dumps(raw_prediction)
+    print(f"raw_prediction:{raw_prediction}")
+    #coref_results = model.extract_molecule_corefs_from_figures([image])
+    coref_results = copy.deepcopy(get_cached_multi_molecular(image_path))   # one molecular-agent run per image; reconciled
+    for item in coref_results:
+        for bbox in item.get("bboxes", []):
+            for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]: #'atoms'
+                bbox.pop(key, None)  # Safely remove key
+
+    data = coref_results[0]
+    parsed = parse_coref_data_with_fallback(data)
+
+    combined_result = {
+        #"reaction_prediction": raw_prediction,  # is a list
+        "molecule_coref": parsed               # structured molecule recognition result
+    }
+    print(f"combined_result:{combined_result}")
+    return combined_result
+
+
+def process_reaction_image_with_product_variant_R_group(
     image_path: str,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct-AWQ",
-    base_url: Optional[str] = "http://localhost:8000/v1",
+    model_name: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> dict:
+    """
+    Aligned with process_reaction_image_with_product_variant_R_group workflow, but uses the OpenAI-compatible endpoint configured in llm.get_client().
+
+    Args:
+        image_path: reaction image path.
+        model_name: model id (default: llm.resolve_model()).
+        base_url: API base URL (default: llm.resolve_base_url()).
+        api_key: API key (default: API_KEY env).
+
+    Returns:
+        dict: organized reaction data, including reactants, products, and reaction templates.
+    """
+    model_name = llm.resolve_model(model_name)
+    base_url = llm.resolve_base_url(base_url)
+    api_key = llm.resolve_key(api_key)
+    _mk = llm.model_kwargs(model_name)
+
+    client = llm.get_client(api_key=api_key, base_url=base_url)
+
+    # Load image and encode as Base64
+    def encode_image(image_path: str):
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+
+    base64_image = encode_image(image_path)
+
+    # GPT tool-calling configuration
+    tools = [
+        {
+            'type': 'function',
+            'function': {
+                'name': 'get_multi_molecular_text_to_correct',
+                'description': 'Extracts the SMILES string and text coref from molecular images.',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'image_path': {
+                            'type': 'string',
+                            'description': 'Path to the reaction image.'
+                        }
+                    },
+                    'required': ['image_path'],
+                    'additionalProperties': False
+                }
+            }
+        },
+        {
+        'type': 'function',
+        'function': {
+            'name': 'get_reaction',
+            'description': 'Get a list of reactions from a reaction image. A reaction contains data of the reactants, conditions, and products.',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'image_path': {
+                        'type': 'string',
+                        'description': 'The path to the reaction image.',
+                    },
+                },
+                'required': ['image_path'],
+                'additionalProperties': False,
+            },
+        },
+            },
+            {
+        'type': 'function',
+        'function': {
+            'name': 'get_reaction_con',
+            'description': 'Get a list of reaction conditions from a reaction image',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'image_path': {
+                        'type': 'string',
+                        'description': 'The path to the reaction image.',
+                    },
+                },
+                'required': ['image_path'],
+                'additionalProperties': False,
+            },
+        },
+            }
+    ]
+
+    # Message content provided to GPT
+    with open('./prompt/prompt_Str_R.txt', 'r', encoding='utf-8') as prompt_file:
+        prompt = prompt_file.read()
+    messages = [
+        {'role': 'system', 'content': 'You are a helpful assistant.'},
+        {
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': prompt},
+                {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{base64_image}'}}
+            ]
+        }
+    ]
+
+    # Call GPT API (with retry mechanism)
+    response = retry_api_call(
+        client.chat.completions.create,
+        max_retries=5,  # Increase retry count because multiple requests may happen simultaneously
+        base_delay=3,   # Increase base delay to give the API more recovery time
+        backoff_factor=2,
+        model=model_name,
+        **_mk,
+        #response_format={'type': 'json_object'},
+        messages=messages,
+        tools=tools,
+        tool_choice="auto",
+    )
+    
+    # Step 1: Tool mapping table
+    TOOL_MAP = {
+        'get_multi_molecular_text_to_correct': get_multi_molecular_text_to_correct,
+        'get_reaction': get_reaction,
+        'get_reaction_con':get_reaction_con
+    }
+
+    # Step 2: Handle multiple tool calls
+    tool_calls = response.choices[0].message.tool_calls or []
+    results = []
+
+    # Iterate through each tool call
+    for tool_call in tool_calls:
+        tool_name = tool_call.function.name
+        tool_arguments = tool_call.function.arguments
+        tool_call_id = tool_call.id
+        
+        try:
+            tool_args = json.loads(tool_arguments)
+        except (json.JSONDecodeError, TypeError):
+            # Malformed tool arguments: image_path is used directly below, default to {}.
+            tool_args = {}
+        
+        if tool_name in TOOL_MAP:
+            # Call tool and get result
+            tool_result = TOOL_MAP[tool_name](image_path)
+        else:
+            # Unknown tool name (e.g. VLM drift): skip rather than crash the pipeline.
+            print(f"WARNING [mol_agent]: Unknown tool called: {tool_name}, skipping.")
+            continue
+        
+        # Save each tool-call result
+        results.append({
+            'role': 'tool',
+            'name': tool_name,  # Gemini API requires the name field
+            'content': json.dumps({
+                'image_path': image_path,
+                f'{tool_name}':(tool_result),
+            }),
+            'tool_call_id': tool_call_id,
+        })
+
+    # Prepare the chat completion payload
+    completion_payload = {
+        'model': model_name,
+        'messages': [
+            {'role': 'system', 'content': 'You are a helpful assistant.'},
+            {
+                'role': 'user',
+                'content': [
+                    {
+                        'type': 'text',
+                        'text': prompt
+                    },
+                    {
+                        'type': 'image_url',
+                        'image_url': {
+                            'url': f'data:image/png;base64,{base64_image}'
+                        }
+                    }
+                ]
+            },
+            response.choices[0].message,
+            *results
+            ],
+    }
+
+    # Generate new response (with retry mechanism)
+    response, _ = llm.final_json_call(
+        client, completion_payload["model"], completion_payload["messages"], _mk,
+        tool_map=TOOL_MAP, tool_arg=image_path, retry=retry_api_call)
+
+    # Get GPT-generated result
+    raw_content = response.choices[0].message.content
+
+    # Check whether content is empty
+    if not raw_content or not raw_content.strip():
+        print(f"ERROR [agent]: Model returned empty content")
+        print(f"Full response object: {response}")
+        raise ValueError("Model returned empty content. Please check the model response.")
+
+    print(f"DEBUG [agent]: Raw content preview (first 500 chars):\n{raw_content[:500]}")
+
+    # Parse JSON
+    gpt_output = None
+
+    try:
+        gpt_output = json.loads(raw_content)
+        print(f"DEBUG [agent]: Successfully parsed JSON directly")
+    except json.JSONDecodeError as _e_strict:
+        gpt_output = None
+        try:
+            gpt_output = _loads_lenient(raw_content)       # fences / raw or mixed backslashes in SMILES (E/Z bonds)
+            print(f"DEBUG [agent]: Parsed JSON after lenient repair (strict error: {_e_strict})")
+        except json.JSONDecodeError as _e_lenient:
+            print(f"ERROR [agent]: strict parse: {_e_strict}; lenient parse: {_e_lenient}")
+    if gpt_output is None:
+        print(f"ERROR [agent]: Failed to parse JSON from model response; raw content saved to "
+              f"{llm.dump_unparsable(raw_content, 'rgroup_agent')}")
+        print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
+        raise json.JSONDecodeError(
+            f"Could not parse JSON from model response. Content may not be valid JSON.",
+            raw_content, 0
+        )
+    
+    print("R_group_agent_output:", gpt_output)
+    gpt_output = _compensate_missing_molecules(gpt_output, results, 'get_multi_molecular_text_to_correct')
+    image = Image.open(image_path).convert('RGB')
+    image_np = np.array(image)
+
+    # Use OS-version caching function
+    coref_results = get_cached_multi_molecular(image_path)
+    raw_results = get_cached_raw_results(image_path)
+    # No reaction detected: fall back to an empty reaction instead of an IndexError.
+    reaction_results = raw_results[0] if raw_results else {}
+    
+    reaction = {
+        "reactants": reaction_results.get('reactants', []),
+        "conditions": reaction_results.get('conditions', []),
+        "products": reaction_results.get('products', [])
+    }
+    reaction_results = [{"reactions": [reaction]}]
+
+    # Define function to update tool output
+    def extract_smiles_details(smiles_data, raw_details):
+        smiles_details = {}
+        for smiles in smiles_data:
+            for detail in raw_details:
+                for bbox in detail.get('bboxes', []):
+                    if bbox.get('smiles') == smiles:
+                        smiles_details[smiles] = {
+                            'category': bbox.get('category'),
+                            'bbox': bbox.get('bbox'),
+                            'category_id': bbox.get('category_id'),
+                            'score': bbox.get('score'),
+                            'molfile': bbox.get('molfile'),
+                            'atoms': bbox.get('atoms'),
+                            'bonds': bbox.get('bonds'),
+                        }
+                        break
+        return smiles_details
+
+    # Get results
+    smiles_details = extract_smiles_details(gpt_output, coref_results)
+
+    reactants_array = []
+    products = []
+
+    for reactant in reaction_results[0]['reactions'][0]['reactants']:
+        if 'smiles' in reactant:
+            reactants_array.append(reactant['smiles'])
+
+    for product in reaction_results[0]['reactions'][0]['products']:
+        products.append(product['smiles'])
+
+    # Organize reaction data
+    _prev_flag = utils.BACKOUT_COMPOSITE_SITES
+    utils.BACKOUT_COMPOSITE_SITES = True      # also substitute R groups embedded in composite labels ([COR2]); this branch only
+    try:
+        backed_out = utils.backout_without_coref(reaction_results, coref_results, gpt_output, smiles_details, model.molnextr)
+    finally:
+        utils.BACKOUT_COMPOSITE_SITES = _prev_flag
+    backed_out.sort(key=lambda x: x[2])
+    extracted_rxns = {}
+    for reactants, products_, label in backed_out:
+        extracted_rxns[label] = {'reactants': reactants, 'products': products_}
+    
+    for item in coref_results:
+        for bbox in item.get("bboxes", []):
+            for key in ["category", "molfile", "symbols", 'atoms', "bonds", 'category_id', 'score', 'corefs',"coords","edges"]:
+                bbox.pop(key, None)  # Safely remove key
+
+    data = coref_results[0]
+    parsed = parse_coref_data_with_fallback(data)
+    
+    toadd = {
+        "reaction_template": {
+            "reactants": reactants_array,
+            "products": products
+        },
+        "reactions": extracted_rxns,
+        "original_molecule_list": gpt_output
+    }
+
+    # Sort by label
+    sorted_keys = sorted(toadd["reactions"].keys())
+    toadd["reactions"] = {i: toadd["reactions"][i] for i in sorted_keys}
+    toadd = normalize_product_variant_output(toadd)
+    print(f"str_R_group_agent_output:{toadd}")
+    return toadd
+
+
+def process_reaction_image_with_table_R_group(
+    image_path: str,
+    *,
+    model_name: Optional[str] = None,
+    base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 
 ) -> dict:
     """
-    Aligned with process_reaction_image_with_table_R_group workflow, but uses a local/self-hosted model compatible with OpenAI Chat Completions protocol (such as vLLM or Ollama).
+    Aligned with process_reaction_image_with_table_R_group workflow, but uses the OpenAI-compatible endpoint configured in llm.get_client().
 
     Args:
         image_path: reaction image path.
-        model_name: local model name (default `Qwen/Qwen3-VL-8B-Instruct`).
-        base_url: OpenAI-compatible API endpoint; if None, use `http://localhost:8000/v1` (vLLM default port).
-        api_key: API key, can be any non-empty string (vLLM default can be `"EMPTY"`).
+        model_name: model id (default: llm.resolve_model()).
+        base_url: API base URL (default: llm.resolve_base_url()).
+        api_key: API key (default: API_KEY env).
 
     Returns:
         dict: organized reaction data including R-group table information.
     """
-    base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
-    api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
+    model_name = llm.resolve_model(model_name)
+    base_url = llm.resolve_base_url(base_url)
+    api_key = llm.resolve_key(api_key)
+    _mk = llm.model_kwargs(model_name)
 
-    client = OpenAI(
-        base_url=base_url,
-        api_key=api_key,
-    )
+    client = llm.get_client(api_key=api_key, base_url=base_url)
 
     # Load image and encode as Base64
     def encode_image(image_path: str):
@@ -1944,7 +1994,7 @@ def process_reaction_image_with_table_R_group_OS(
         {
             'type': 'function',
             'function': {
-                'name': 'get_full_reaction_OS',
+                'name': 'get_full_reaction',
                 'description': 'Get a list of reactions from a reaction image. A reaction contains data of the reactants, conditions, and products.',
                 'parameters': {
                     'type': 'object',
@@ -1968,7 +2018,7 @@ def process_reaction_image_with_table_R_group_OS(
         base_delay=3,
         backoff_factor=2,
         model=model_name,
-        temperature=0,
+        **_mk,
         #response_format={'type': 'json_object'},
         messages=[
             {'role': 'system', 'content': 'You are a helpful assistant.'},
@@ -1995,7 +2045,7 @@ def process_reaction_image_with_table_R_group_OS(
     tool_calls = response.choices[0].message.tool_calls or []
     if not tool_calls:
         # No tool call returned: fall back to the only available tool.
-        return get_full_reaction_OS(image_path)
+        return get_full_reaction(image_path)
     
     tool_call = tool_calls[0]
     tool_name = tool_call.function.name
@@ -2007,12 +2057,12 @@ def process_reaction_image_with_table_R_group_OS(
     except (json.JSONDecodeError, TypeError):
         tool_args = {}
 
-    if tool_name == 'get_full_reaction_OS':
-        tool_result = get_full_reaction_OS(image_path)
+    if tool_name == 'get_full_reaction':
+        tool_result = get_full_reaction(image_path)
     else:
         # Unknown tool name: fall back to the only available tool instead of crashing.
-        print(f"WARNING [full_reaction agent OS]: Unknown tool called: {tool_name}, using get_full_reaction_OS.")
-        tool_result = get_full_reaction_OS(image_path)
+        print(f"WARNING [full_reaction agent]: Unknown tool called: {tool_name}, using get_full_reaction.")
+        tool_result = get_full_reaction(image_path)
 
     # Build tool-call result message
     function_call_result_message = {
@@ -2050,19 +2100,12 @@ def process_reaction_image_with_table_R_group_OS(
     }
 
     # Generate new response (with retry mechanism)
-    response = retry_api_call(
-        client.chat.completions.create,
-        max_retries=5,
-        base_delay=3,
-        backoff_factor=2,
-        model=completion_payload["model"],
-        messages=completion_payload["messages"],
-        response_format={'type': 'json_object'},
-        temperature=0
-    )
+    response, _ = llm.final_json_call(
+        client, completion_payload["model"], completion_payload["messages"], _mk,
+        tool_map={'get_full_reaction': get_full_reaction}, tool_arg=image_path, retry=retry_api_call)
 
-    print(f"DEBUG [OS]: Model response content type: {type(response.choices[0].message.content)}")
-    print(f"DEBUG [OS]: Model response content preview: {str(response.choices[0].message.content)[:500]}")
+    print(f"DEBUG [agent]: Model response content type: {type(response.choices[0].message.content)}")
+    print(f"DEBUG [agent]: Model response content preview: {str(response.choices[0].message.content)[:500]}")
 
     def replace_symbols_and_generate_smiles(input1, input2):
         """
@@ -2084,7 +2127,7 @@ def process_reaction_image_with_table_R_group_OS(
             raise ValueError(f"Expected input2 to be a dict, but got {type(input2)}: {input2}")
         
         if 'reactions' not in input2:
-            print(f"ERROR [OS]: 'reactions' key not found in input2.")
+            print(f"ERROR [agent]: 'reactions' key not found in input2.")
             print(f"Available keys: {list(input2.keys())}")
             print(f"Full input2 content:\n{json.dumps(input2, indent=2, ensure_ascii=False)}")
             raise KeyError(f"'reactions' key not found in model response. Available keys: {list(input2.keys())}. "
@@ -2180,22 +2223,30 @@ def process_reaction_image_with_table_R_group_OS(
     
     # Check whether content is empty
     if not raw_content or not raw_content.strip():
-        print(f"ERROR [OS]: Model returned empty content")
+        print(f"ERROR [agent]: Model returned empty content")
         print(f"Full response object: {response}")
         raise ValueError("Model returned empty content. Please check the model response.")
     
-    print(f"DEBUG [OS]: Raw content type: {type(raw_content)}")
-    print(f"DEBUG [OS]: Raw content length: {len(raw_content)}")
-    print(f"DEBUG [OS]: Raw content preview (first 500 chars):\n{raw_content[:500]}")
+    print(f"DEBUG [agent]: Raw content type: {type(raw_content)}")
+    print(f"DEBUG [agent]: Raw content length: {len(raw_content)}")
+    print(f"DEBUG [agent]: Raw content preview (first 500 chars):\n{raw_content[:500]}")
     
     # Parse JSON
     input2 = None
 
     try:
         input2 = json.loads(raw_content)
-        print(f"DEBUG [OS]: Successfully parsed JSON directly")
-    except json.JSONDecodeError:
-        print(f"ERROR [OS]: Failed to parse JSON from model response")
+        print(f"DEBUG [agent]: Successfully parsed JSON directly")
+    except json.JSONDecodeError as _e_strict:
+        input2 = None
+        try:
+            input2 = _loads_lenient(raw_content)       # fences / raw or mixed backslashes in SMILES (E/Z bonds)
+            print(f"DEBUG [agent]: Parsed JSON after lenient repair (strict error: {_e_strict})")
+        except json.JSONDecodeError as _e_lenient:
+            print(f"ERROR [agent]: strict parse: {_e_strict}; lenient parse: {_e_lenient}")
+    if input2 is None:
+        print(f"ERROR [agent]: Failed to parse JSON from model response; raw content saved to "
+              f"{llm.dump_unparsable(raw_content, 'rgroup_agent')}")
         print(f"Raw content (last 2000 chars):\n{raw_content[-2000:]}")
         raise json.JSONDecodeError(
             f"Could not parse JSON from model response. Content may not be valid JSON.",
@@ -2203,12 +2254,12 @@ def process_reaction_image_with_table_R_group_OS(
         )
 
     # Validate format of input2
-    print(f"DEBUG [OS]: input2 type: {type(input2)}")
+    print(f"DEBUG [agent]: input2 type: {type(input2)}")
     if isinstance(input2, dict):
-        print(f"DEBUG [OS]: input2 keys: {list(input2.keys())}")
-        print(f"DEBUG [OS]: input2 content preview (first 1000 chars):\n{json.dumps(input2, indent=2, ensure_ascii=False)[:1000]}")
+        print(f"DEBUG [agent]: input2 keys: {list(input2.keys())}")
+        print(f"DEBUG [agent]: input2 content preview (first 1000 chars):\n{json.dumps(input2, indent=2, ensure_ascii=False)[:1000]}")
     else:
-        print(f"DEBUG [OS]: input2 is not a dict, value: {input2}")
+        print(f"DEBUG [agent]: input2 is not a dict, value: {input2}")
     
     updated_input = replace_symbols_and_generate_smiles(input1, input2)
     print(f"txt_R_group_agent_output:{updated_input}")

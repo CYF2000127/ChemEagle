@@ -878,6 +878,38 @@ def _condensed_formula_list_to_smiles(formula_list, start_bond, end_bond=None, d
     return dfs('', start_bond, cur_idx, add_idx)
 
 
+_AMINO_PREFIX = re.compile(r'^N(?:,N)?-(di)?(methyl|ethyl|propyl|isopropyl|butyl|tert-butyl|phenyl|benzyl|allyl)(?:amino)?$', re.I)
+_ALKYL_SMILES = {'methyl': 'C', 'ethyl': 'CC', 'propyl': 'CCC', 'isopropyl': 'C(C)C', 'butyl': 'CCCC',
+                 'tert-butyl': 'C(C)(C)C', 'phenyl': 'c1ccccc1', 'benzyl': 'Cc1ccccc1', 'allyl': 'CC=C'}
+
+
+def _amino_prefix_to_smiles(symbol):
+    """Substituent written as an N-alkyl prefix ("N,N-dimethyl", "N-methyl", "N,N-diethylamino"):
+    the amino group carrying those alkyls, attached through N."""
+    m = _AMINO_PREFIX.match(symbol.strip())
+    if not m:
+        return None
+    alk = _ALKYL_SMILES[m.group(2).lower()]
+    return f'[N]({alk}){alk}' if m.group(1) else f'[NH]{alk}'
+
+
+def _is_condensed_formula(symbol):
+    """Fully tokenisable as a condensed formula (elements, table abbreviations, R-group markers,
+    digits, parentheses) and either carries a variable or has no name-like lowercase run."""
+    tokens = FORMULA_REGEX.findall(symbol)
+    if not tokens or ''.join(tokens) != symbol:
+        return False
+    if any(t in RGROUP_SYMBOLS or (t[0] == 'R' and t[1:].isdigit()) for t in tokens):
+        return True
+    return all(t in ABBREVIATIONS or not re.search(r'[a-z]{3,}', t) for t in tokens)
+
+
+def _name_lookup_worthwhile(symbol):
+    """Only strings that look like a chemical name or a locant shorthand go to OPSIN / PubChem / CIR;
+    short formula-like tokens ("OR", "NR2", "P3") made those services return unrelated molecules."""
+    return bool(re.search(r'[a-z]{3,}', symbol) or re.match(r'\d(?:,\d)*-', symbol))
+
+
 def get_smiles_from_symbol(symbol, mol,atom, bonds, 
                            use_llm: bool = True,
                            llm_api_key: Optional[str] = None,
@@ -887,21 +919,42 @@ def get_smiles_from_symbol(symbol, mol,atom, bonds,
     if symbol in ABBREVIATIONS:
         return ABBREVIATIONS[symbol].smiles
 
+    amino = _amino_prefix_to_smiles(symbol)
+    if amino:
+        return amino
+
     try_mol = Chem.MolFromSmiles(symbol)
-    if try_mol is not None:    
+    if try_mol is not None:
         return symbol
-        
-    opsin_smiles = name2smiles(symbol)
-    if opsin_smiles:
-        return opsin_smiles 
 
     total_bonds = int(sum([bond.GetBondTypeAsDouble() for bond in bonds]))
-    formula_list = _expand_carbon(_parse_formula(symbol))
-    smiles, bonds_left, num_trails, success = _condensed_formula_list_to_smiles(formula_list, total_bonds, None)
-    if success:
-        # Validate whether the SMILES is a viable molecule
-        test_mol = Chem.MolFromSmiles(smiles)
-        if test_mol is not None:
+
+    def _from_formula():
+        try:
+            formula_list = _expand_carbon(_parse_formula(symbol))
+            smiles, bonds_left, num_trails, success = _condensed_formula_list_to_smiles(formula_list, total_bonds, None)
+        except Exception:
+            return None
+        if success and Chem.MolFromSmiles(smiles) is not None:
+            return smiles
+        return None
+
+    # Formula-like tokens (OR, NR2, TBSO, CO2R) are parsed as condensed formulas first: a name
+    # lookup on them returned unrelated database hits.
+    formula_first = _is_condensed_formula(symbol)
+    if formula_first:
+        smiles = _from_formula()
+        if smiles:
+            return smiles
+
+    if _name_lookup_worthwhile(symbol):
+        opsin_smiles = name2smiles(symbol)
+        if opsin_smiles:
+            return opsin_smiles
+
+    if not formula_first:
+        smiles = _from_formula()
+        if smiles:
             return smiles
     
     # Final step: use a large language model (only enabled when API_KEY is configured)

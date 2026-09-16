@@ -2,6 +2,7 @@ from PIL import Image
 import pytesseract
 from chemrxnextractor import RxnExtractor
 from openai import AzureOpenAI, OpenAI
+import llm_client as llm
 from typing import Optional
 model_dir = "./cre_models_v0.1"
 rxn_extractor = RxnExtractor(model_dir)
@@ -17,7 +18,6 @@ import shutil
 import re
 import time
 from openai import InternalServerError, RateLimitError, APIError
-
 
 
 API_KEY = os.getenv("API_KEY")
@@ -226,9 +226,7 @@ def NER_from_text_in_image(image_path: str) -> dict:
     return predictions 
 
 
-
-
-def text_extraction_agent(image_path: str, graphical_input: Optional[dict] = None) -> dict:
+def text_extraction_agent_azure(image_path: str, graphical_input: Optional[dict] = None) -> dict:
     """
     Agent that calls two tools:
       1) extract_reactions_from_text_in_image
@@ -446,21 +444,21 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
     raise RuntimeError("API call failed, unknown error")
 
 
-def text_extraction_agent_OS(
+############################### ChemEagle (any OpenAI-compatible endpoint)
+def text_extraction_agent(
     image_path: str,
     *,
     graphical_input: Optional[dict] = None,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct",
+    model_name: Optional[str] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
-    base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
-    api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
+    model_name = llm.resolve_model(model_name)
+    base_url = llm.resolve_base_url(base_url)
+    api_key = llm.resolve_key(api_key)
+    _mk = llm.model_kwargs(model_name)
 
-    client = OpenAI(
-        base_url=base_url,
-        api_key=api_key,
-    )
+    client = llm.get_client(api_key=api_key, base_url=base_url)
 
     # Encode image as Base64
     with open(image_path, "rb") as f:
@@ -562,7 +560,7 @@ Here is my step-by-step analysis:
     ]
 
     # First API call: let GPT decide which tools to invoke
-    # Note: vLLM may not support response_format and tools simultaneously
+    # Note: response_format is applied on the final call only
     try:
         response1 = retry_api_call(
             client.chat.completions.create,
@@ -573,16 +571,13 @@ Here is my step-by-step analysis:
             messages=messages,
             tools=tools,
             tool_choice="auto",
-            temperature=0,
-            # response_format={"type": "json_object"},  # vLLM does not support using response_format and tools simultaneously
+            **_mk,
+            # response_format={"type": "json_object"},  # response_format is applied on the final call only
         )
     except Exception as e:
         error_msg = str(e)
         if "tool" in error_msg.lower() or "tool-call" in error_msg.lower():
-            print(f"⚠️ Warning: vLLM does not support tool calling: {e}")
-            print("Tip: restart the vLLM container with the following arguments:")
-            print("  --enable-auto-tool-choice --tool-call-parser auto")
-            print("Or continue using Ollama (native tool-calling support)")
+            print(f"⚠️ Warning: the gateway model rejected tool calling: {e}")
             raise
         else:
             raise
@@ -627,16 +622,9 @@ Here is my step-by-step analysis:
     messages.append(assistant_message)
     messages.extend(tool_results_msgs)
     
-    response2 = retry_api_call(
-        client.chat.completions.create,
-        max_retries=5,
-        base_delay=3,
-        backoff_factor=2,
-        model=model_name,
-        messages=messages,
-        temperature=0,
-        response_format={"type": "json_object"}
-    )
+    response2, _ = llm.final_json_call(
+        client, model_name, messages, _mk,
+        tool_map={'extract_reactions_from_text_in_image': extract_reactions_from_text_in_image, 'NER_from_text_in_image': NER_from_text_in_image}, tool_arg=image_path, retry=retry_api_call)
 
 
     raw_content = response2.choices[0].message.content

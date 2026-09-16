@@ -5,8 +5,8 @@ import time
 from typing import Any, List, Optional
 
 from openai import AzureOpenAI, OpenAI
+import llm_client as llm
 from openai import InternalServerError, RateLimitError, APIError
-
 
 
 API_KEY = os.getenv("API_KEY")
@@ -104,7 +104,7 @@ def _encode_image(image_path: str) -> str | None:
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-def plan_observer_agent(image_path: str, tool_calls: List[Any]) -> dict:
+def plan_observer_agent_azure(image_path: str, tool_calls: List[Any]) -> dict:
     """Returns {"list_of_agents": list, "redo": bool, "reason": str}."""
     default = {"list_of_agents": tool_calls, "redo": False, "reason": ""}
     base64_image = _encode_image(image_path)
@@ -144,7 +144,7 @@ def plan_observer_agent(image_path: str, tool_calls: List[Any]) -> dict:
         return default
 
 
-def action_observer_agent(image_path: str, tool_result: Any) -> dict:
+def action_observer_agent_azure(image_path: str, tool_result: Any) -> dict:
     """Returns {"redo": bool, "reason": str, "list_of_agents": list}."""
     default = {"redo": False, "reason": "", "list_of_agents": []}
     base64_image = _encode_image(image_path)
@@ -234,28 +234,28 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
     raise RuntimeError("API call failed, unknown error")
 
 
-def plan_observer_agent_OS(
+############################### ChemEagle (any OpenAI-compatible endpoint)
+def plan_observer_agent(
     image_path: str,
     tool_calls: List[Any],
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct",
+    model_name: Optional[str] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
     """
-    OS version of plan_observer_agent, using a local/self-hosted model compatible with the OpenAI Chat Completions protocol.
+    the LLM endpoint version of plan_observer_agent, using the OpenAI-compatible endpoint configured in llm.get_client().
 
     Returns:
         dict: {"list_of_agents": list, "redo": bool, "reason": str}
     """
     default = {"list_of_agents": tool_calls, "redo": False, "reason": ""}
-    base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
-    api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
+    model_name = llm.resolve_model(model_name)
+    base_url = llm.resolve_base_url(base_url)
+    api_key = llm.resolve_key(api_key)
+    _mk = llm.model_kwargs(model_name)
 
-    client_os = OpenAI(
-        base_url=base_url,
-        api_key=api_key,
-    )
+    client = llm.get_client(api_key=api_key, base_url=base_url)
 
     base64_image = _encode_image(image_path)
     plan_json = json.dumps(tool_calls or [], ensure_ascii=False, indent=2)
@@ -272,7 +272,7 @@ def plan_observer_agent_OS(
 
     try:
         response = retry_api_call(
-            client_os.chat.completions.create,
+            client.chat.completions.create,
             max_retries=5,
             base_delay=3,
             backoff_factor=2,
@@ -281,7 +281,7 @@ def plan_observer_agent_OS(
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": user_content},
             ],
-            temperature=0,
+            **_mk,
             response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content
@@ -289,7 +289,7 @@ def plan_observer_agent_OS(
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:
-            print(f"⚠️ Warning: plan_observer_agent_OS could not parse JSON, returning the original plan")
+            print(f"⚠️ Warning: plan_observer_agent could not parse JSON, returning the original plan")
             return default
         
         return {
@@ -298,32 +298,31 @@ def plan_observer_agent_OS(
             "reason": parsed.get("reason", ""),
         }
     except Exception as e:
-        print(f"⚠️ Warning: plan_observer_agent_OS error: {e}, returning the original plan")
+        print(f"⚠️ Warning: plan_observer_agent error: {e}, returning the original plan")
         return default
 
 
-def action_observer_agent_OS(
+def action_observer_agent(
     image_path: str,
     tool_result: Any,
     *,
-    model_name: str = "/models/Qwen3-VL-32B-Instruct",
+    model_name: Optional[str] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
     """
-    OS version of action_observer_agent, using a local/self-hosted model compatible with the OpenAI Chat Completions protocol.
+    the LLM endpoint version of action_observer_agent, using the OpenAI-compatible endpoint configured in llm.get_client().
 
     Returns:
         dict: {"redo": bool, "reason": str, "list_of_agents": list}
     """
     default = {"redo": False, "reason": "", "list_of_agents": []}
-    base_url = base_url or os.getenv("VLLM_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:8000/v1"))
-    api_key = api_key or os.getenv("VLLM_API_KEY", os.getenv("OLLAMA_API_KEY", "EMPTY"))
+    model_name = llm.resolve_model(model_name)
+    base_url = llm.resolve_base_url(base_url)
+    api_key = llm.resolve_key(api_key)
+    _mk = llm.model_kwargs(model_name)
 
-    client_os = OpenAI(
-        base_url=base_url,
-        api_key=api_key,
-    )
+    client = llm.get_client(api_key=api_key, base_url=base_url)
 
     base64_image = _encode_image(image_path)
     result_json = json.dumps(tool_result, ensure_ascii=False, indent=2)
@@ -340,7 +339,7 @@ def action_observer_agent_OS(
 
     try:
         response = retry_api_call(
-            client_os.chat.completions.create,
+            client.chat.completions.create,
             max_retries=5,
             base_delay=3,
             backoff_factor=2,
@@ -349,7 +348,7 @@ def action_observer_agent_OS(
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": user_content},
             ],
-            temperature=0,
+            **_mk,
             response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content
@@ -357,7 +356,7 @@ def action_observer_agent_OS(
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:
-            print(f"⚠️ Warning: action_observer_agent_OS could not parse JSON, returning no redo")
+            print(f"⚠️ Warning: action_observer_agent could not parse JSON, returning no redo")
             return default
         
         return {
@@ -366,5 +365,5 @@ def action_observer_agent_OS(
             "list_of_agents": parsed.get("list_of_agents", []),
         }
     except Exception as e:
-        print(f"⚠️ Warning: action_observer_agent_OS error: {e}, returning no redo")
+        print(f"⚠️ Warning: action_observer_agent error: {e}, returning no redo")
         return default
