@@ -68,7 +68,7 @@ SCHEMA = obj(
     schema_version={'type': 'string', 'enum': ['1.3']},
     ocr_corrections=arr(obj(molecule_id=S, atom_id=S, expected_symbol=S, corrected_symbol=S, evidence=S)),
     atom_corrections=arr(obj(molecule_id=S, atom_id=S, expected_symbol=S, corrected_symbol=S,
-                             kind={'type': 'string', 'enum': ['charge', 'label_from_atom', 'lookalike']}, evidence=S)),
+                             kind={'type': 'string', 'enum': ['charge', 'label_from_atom', 'lookalike', 'anion_element']}, evidence=S)),
     text_corrections=arr(obj(text_id=S, corrected_text=arr(S), evidence=S)),
     definitions=arr(obj(name=S, literal_value=S, replacement_symbol=S, source_text_id=NULLABLE_S,
                         evidence=S, scope=arr(S))),
@@ -567,6 +567,8 @@ def process(data, plan):
                     kind = 'label_from_atom'
                 elif CHARGED.fullmatch(patch['corrected_symbol']) and element_of(src) == element_of(patch['corrected_symbol']):
                     kind = 'charge'
+                elif CHARGED.fullmatch(src) and '-' in src and CHARGED.fullmatch(patch['corrected_symbol']) and '-' in patch['corrected_symbol']:
+                    kind = 'anion_element'      # an isolated [O-] printed as Cl-: the element of a free anion was misread
                 if kind is not None:
                     rerouted.append({**patch, 'kind': kind, '_ocr_index': _k})
                     audit.append({'operation': 'reroute_ocr_to_atom_correction', **patch, 'kind': kind})
@@ -608,6 +610,9 @@ def process(data, plan):
                 require(j in charge_candidates(edited[i]['symbols'], degs), 'positive charge only on an atom whose bonding requires it (highest-degree atom of that element, degree >= 3)')
             else:
                 require(degs[j] <= 1, 'negative charge only on a counter-ion or a terminal atom')
+        elif kind == 'anion_element':
+            require(CHARGED.fullmatch(src) and '-' in src and CHARGED.fullmatch(dst) and '-' in dst, 'anion_element needs charged single-element tokens on both sides')
+            require(degs is not None and degs[j] == 0, 'anion_element only on an isolated atom (a free counter-ion)')
         elif kind == 'label_from_atom':
             require(BARE_ATOM.fullmatch(src), 'label_from_atom source must be a bare atom, * or [n*]')
             require(LABEL.fullmatch(dst) and editable(dst) and not CHARGED.fullmatch(dst), 'label_from_atom target must be a bracketed label, not an element or charge token')

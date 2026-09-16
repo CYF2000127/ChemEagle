@@ -1710,6 +1710,52 @@ def _correct_unmatched_entries(image_path: str, reaction_results, adopted):
                     atom['atom_symbol'] = sym
 
 
+_PLACEHOLDER = re.compile(r"^\[((?:R\d*|R[abcdf]|Ar\d*|X\d*|Y\d*|Z\d*|Q|A|E|EWG|Nu))('*)\]$")
+
+
+def _harmonize_placeholders(reaction_results):
+    """The two sides of a template must name a substituent the same way for the R-group back-out to map
+    it ([Ar1] in the reactant, [Ar1] in the product). The vision passes read them independently, and a
+    prime can appear on one side only ([Ar1'] in the product): when a primed name exists on one side, is
+    absent on the other, and the unprimed name is present there, the primed token is renamed. In place;
+    SMILES regenerated. Returns the renames."""
+    renames = []
+    for rx in reaction_results or []:
+        sides = {}
+        for section in ('reactants', 'products'):
+            names = set()
+            for e in rx.get(section, []) or []:
+                for t in (e.get('symbols') or []) if isinstance(e, dict) else []:
+                    m = _PLACEHOLDER.match(t) if isinstance(t, str) else None
+                    if m:
+                        names.add(m.group(1) + m.group(2))
+            sides[section] = names
+        for section, other in (('products', 'reactants'), ('reactants', 'products')):
+            for e in rx.get(section, []) or []:
+                if not (isinstance(e, dict) and e.get('symbols') and e.get('coords') and e.get('edges')):
+                    continue
+                changed = False
+                for j, t in enumerate(e['symbols']):
+                    m = _PLACEHOLDER.match(t) if isinstance(t, str) else None
+                    if not m or not m.group(2):
+                        continue
+                    base, full = m.group(1), m.group(1) + m.group(2)
+                    if full not in sides[other] and base in sides[other] and base not in sides[section]:
+                        e['symbols'][j] = f'[{base}]'
+                        if isinstance(e.get('atoms'), list) and j < len(e['atoms']) and isinstance(e['atoms'][j], dict):
+                            e['atoms'][j]['atom_symbol'] = f'[{base}]'
+                        renames.append((section, t, f'[{base}]'))
+                        changed = True
+                if changed:
+                    try:
+                        e['smiles'], e['molfile'], _ = _convert_graph_to_smiles(e['coords'], e['symbols'], e['edges'])
+                    except Exception as exc:
+                        print(f"[harmonize] regeneration failed: {type(exc).__name__}: {exc}")
+    for section, old_t, new_t in renames:
+        print(f"[harmonize] {section}: {old_t} -> {new_t} (the other side names it {new_t})")
+    return renames
+
+
 def _reconcile_graphs(image_path: str, reaction_results):
     """Cross-check one reaction-result object against the molecular agent (chemietoolkit.mol_edit_plan.reconcile),
     repairing it in place: an RDKit-invalid graph on the reaction side is replaced by the valid
@@ -1743,6 +1789,7 @@ def _reconcile_graphs(image_path: str, reaction_results):
                 print(f"[adopt] {a['section']} no detector box overlaps rxnim_bbox={a['rxnim_bbox']}; RxnIM graph kept: {str(a['old_smiles'])[:70]}")
         if os.environ.get('RXN_UNMATCHED_LLM', '1') != '0':
             _correct_unmatched_entries(image_path, reaction_results, adopted)
+        _harmonize_placeholders(reaction_results)
         _patch_to_reaction(reaction_results)
         print(f"rxn_agent_adopted:{reaction_results}")
         if mol_result:
