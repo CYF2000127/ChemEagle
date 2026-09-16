@@ -17,6 +17,80 @@ def _rxn_agent_molmap():
 
 
 from chemietoolkit.helper import _patch_to_reaction  # noqa: E402
+from chemietoolkit.mol_edit_plan.reconcile import iou as _iou, is_derived as _is_derived  # noqa: E402
+from chemietoolkit.mol_edit_plan.annotate import boxed_image_base64 as _boxed_image_base64  # noqa: E402
+
+
+# RGROUP_AGENT_MODE=ids (default): the structure-based R-group agent labels molecules by id (m<index of the box in
+# the molecular agent's output>) and never writes SMILES; the program copies each SMILES from the tool output.
+# RGROUP_AGENT_MODE=smiles: the 2026-09-14 behaviour, the model rewrites a SMILES-keyed dictionary.
+def _rgroup_agent_ids():
+    return os.environ.get('RGROUP_AGENT_MODE', 'ids') != 'smiles'
+
+
+def _box_anchors(item):
+    """Group the molecular agent's molecule boxes by drawn box (IoU > 0.95: variants the edit plan cloned
+    from one template share its box). Returns {index: anchor index}; the anchor is the first box of the
+    group and is the one that gets a tag on the picture."""
+    boxes = item.get('bboxes', []) or []
+    anchors, anchor_of = [], {}
+    for i, b in enumerate(boxes):
+        if 'smiles' not in b or not b.get('bbox'):
+            continue
+        hit = next((a for a in anchors if _iou(list(boxes[a]['bbox']), list(b['bbox'])) > 0.95), None)
+        if hit is None:
+            anchors.append(i)
+            hit = i
+        anchor_of[i] = hit
+    return anchor_of
+
+
+def _assign_molecule_ids(item):
+    """Stable ids for the molecular agent's boxes: m<index in the bboxes list>. A box that shares its
+    drawn box with an earlier one (an expanded variant) gets same_box_as = the id of that first box,
+    whose tag is the one on the picture; it keeps its compound_id."""
+    anchor_of = _box_anchors(item)
+    for i, b in enumerate(item.get('bboxes', []) or []):
+        if 'smiles' not in b:
+            continue
+        b['bbox_id'] = f'm{i}'
+        if anchor_of.get(i, i) != i:
+            b['same_box_as'] = f'm{anchor_of[i]}'
+    return item
+
+
+def _tagged_molecules(item):
+    """Boxes to outline for the R-group agents: one per drawn box, tagged with the anchor's id number."""
+    boxes = item.get('bboxes', []) or []
+    anchors = sorted(set(_box_anchors(item).values()))
+    return [{'molecule_id': f'mol_{i:03d}', 'bbox': boxes[i]['bbox']} for i in anchors]
+
+
+def _ids_to_smiles(gpt_output, results, tool_name):
+    """Turn the model's id-keyed labels into the SMILES-keyed dictionary the reconstruction expects,
+    copying every SMILES from the tool output. A key that is itself a SMILES of the tool output is
+    accepted (a model that ignored the ids); anything else is dropped with a warning."""
+    tool_molecules = None
+    for r in results:
+        content = json.loads(r['content'])
+        if tool_name in content:
+            tool_molecules = content[tool_name]
+            break
+    if not isinstance(tool_molecules, list) or not isinstance(gpt_output, dict):
+        return gpt_output
+    by_id = {m.get('id') or m.get('bbox_id'): m.get('smiles') for m in tool_molecules if isinstance(m, dict)}
+    known = {m.get('smiles') for m in tool_molecules if isinstance(m, dict)}
+    out, dropped = {}, []
+    for key, info in gpt_output.items():
+        smiles = by_id.get(key)
+        if smiles is None and key in known:
+            smiles = key
+        if not smiles:
+            dropped.append(key)
+            continue
+        out[smiles] = info
+    print(f"[ids] {len(out)} labelled molecules from {len(by_id)} ids" + (f"; dropped unknown keys {dropped}" if dropped else ""))
+    return out
 import sys
 from rxnim import RxnIM
 import json
@@ -561,7 +635,10 @@ def parse_coref_data_with_fallback(data):
                 #"bbox": bbox,
                 "bbox_id": bbox_id
             }
-        
+        for k in ("compound_id", "same_box_as"):      # expanded variants: printed label and the template's box
+            if k in smiles_entry:
+                result_item[k] = smiles_entry[k]
+
         results.append(result_item)
 
         # Record which SMILES have been paired
@@ -586,6 +663,9 @@ def parse_coref_data_with_fallback(data):
                     #"bbox": entry["bbox"],
                     "bbox_id": entry.get("bbox_id", ""),
                 }
+            for k in ("compound_id", "same_box_as"):
+                if k in entry:
+                    result_item[k] = entry[k]
             results.append(result_item)
 
     return results
@@ -1523,6 +1603,8 @@ def get_multi_molecular_text_to_correct(image_path: str) -> list:
     but reuses cached results.
     """
     coref_results = copy.deepcopy(get_cached_multi_molecular(image_path))
+    if _rgroup_agent_ids():
+        _assign_molecule_ids(coref_results[0])
 
     # Delete fields not intended for LLM return as needed
     for item in coref_results:
@@ -1536,6 +1618,9 @@ def get_multi_molecular_text_to_correct(image_path: str) -> list:
 
     # Assume parse_coref_data_with_fallback requires a single dict input
     parsed = parse_coref_data_with_fallback(coref_results[0])
+    if _rgroup_agent_ids():
+        for entry in parsed:      # the id first, as the model keys its answer on it
+            entry['id'] = entry.get('bbox_id', '')
     print(f"[get_multi_molecular_text_to_correct] parsed: {json.dumps(parsed)}")
     return parsed
 
@@ -1698,7 +1783,12 @@ def process_reaction_image_with_product_variant_R_group(
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
-    base64_image = encode_image(image_path)
+    if _rgroup_agent_ids():
+        # The figure with the molecular agent's boxes outlined and tagged by id number: the model labels
+        # molecules by id, so the tag is how it finds "m7" in the picture. Runs the (cached) molecular agent.
+        base64_image = _boxed_image_base64(image_path, _tagged_molecules(get_cached_multi_molecular(image_path)[0]), min_side=700)
+    else:
+        base64_image = encode_image(image_path)
 
     # GPT tool-calling configuration
     tools = [
@@ -1759,7 +1849,7 @@ def process_reaction_image_with_product_variant_R_group(
     ]
 
     # Message content provided to GPT
-    with open('./prompt/prompt_Str_R.txt', 'r', encoding='utf-8') as prompt_file:
+    with open('./prompt/prompt_Str_R_ids.txt' if _rgroup_agent_ids() else './prompt/prompt_Str_R.txt', 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
     messages = [
         {'role': 'system', 'content': 'You are a helpful assistant.'},
@@ -1785,7 +1875,7 @@ def process_reaction_image_with_product_variant_R_group(
         tools=tools,
         tool_choice="auto",
     )
-    
+
     # Step 1: Tool mapping table
     TOOL_MAP = {
         'get_multi_molecular_text_to_correct': get_multi_molecular_text_to_correct,
@@ -1892,6 +1982,8 @@ def process_reaction_image_with_product_variant_R_group(
         )
     
     print("R_group_agent_output:", gpt_output)
+    if _rgroup_agent_ids():
+        gpt_output = _ids_to_smiles(gpt_output, results, 'get_multi_molecular_text_to_correct')
     gpt_output = _compensate_missing_molecules(gpt_output, results, 'get_multi_molecular_text_to_correct')
     image = Image.open(image_path).convert('RGB')
     image_np = np.array(image)
