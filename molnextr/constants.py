@@ -362,6 +362,10 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['SbF6-', 'SbF6'], 'F[Sb-](F)(F)(F)(F)F', 'F[Sb-](F)(F)(F)(F)F', 0),
     Substitution(['OTf-', 'TfO-'], 'O=S(=O)([O-])C(F)(F)F', 'O=S(=O)([O-])C(F)(F)F', 0),
     Substitution(['NTf2-', 'Tf2N-'], 'O=S(=O)([N-]S(=O)(=O)C(F)(F)F)C(F)(F)F', 'O=S(=O)([N-]S(=O)(=O)C(F)(F)F)C(F)(F)F', 0),
+    Substitution(['MeOSO3-', 'MeSO4-', 'OSO3Me', 'MeOSO3'], 'COS(=O)(=O)[O-]', 'COS(=O)(=O)[O-]', 0),
+    Substitution(['OTs-', 'TsO-'], 'Cc1ccc(S(=O)(=O)[O-])cc1', 'Cc1ccc(S(=O)(=O)[O-])cc1', 0),
+    Substitution(['NO3-'], '[O-][N+](=O)[O-]', '[O-][N+](=O)[O-]', 0),
+    Substitution(['OAc-', 'AcO-'], 'CC(=O)[O-]', 'CC(=O)[O-]', 0),
 ]
 
 ABBREVIATIONS = {abbrv: sub for sub in SUBSTITUTIONS for abbrv in sub.abbrvs}
