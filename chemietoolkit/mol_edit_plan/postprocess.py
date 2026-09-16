@@ -395,6 +395,27 @@ def add_counter_ion_node(box, token):
 
 
 BARE_ELEMENT = re.compile(r'^(?:B|C|N|O|F|P|S|Cl|Br|I|Si|Se)$')
+RADICAL_TOKEN = re.compile(r'^\[(?:C|N|O|S|P|CH|CH2|NH|OH)\]$')      # an element in brackets with no charge: a label scrap
+# Solvents a figure prints inside or beside a structure's box (canonical RDKit SMILES).
+SOLVENT_FRAGMENTS = {'CCOC(C)=O', 'C1CCOC1', 'ClCCl', 'Cc1ccccc1', 'CS(C)=O', 'CC#N', 'ClC(Cl)Cl', 'CCOCC', 'COCCOC',
+                     'C1COCCO1', 'CO', 'CCO', 'CC(C)=O', 'c1ccccc1', 'ClCCCl', 'CN(C)C=O', 'CC(C)O', 'CCCCCC', 'CCCCC',
+                     'O=C1CCCN1C', 'Cc1ccc(C)cc1', 'CC(=O)O', 'CCCCO', 'C1CCCCC1'}
+
+
+def _fragment_is_solvent(box, members):
+    """True when the sub-graph on `members` is one of the printed solvents."""
+    try:
+        from molnextr.chemistry import _convert_graph_to_smiles
+        from rdkit import Chem, RDLogger
+        RDLogger.DisableLog('rdApp.*')
+        coords = [box['coords'][i] for i in members]
+        symbols = [box['symbols'][i] for i in members]
+        edges = [[box['edges'][i][j] for j in members] for i in members]
+        smi = _convert_graph_to_smiles(coords, symbols, edges)[0]
+        m = Chem.MolFromSmiles(smi) if smi else None
+        return m is not None and Chem.MolToSmiles(m) in SOLVENT_FRAGMENTS
+    except Exception:
+        return False
 
 
 def tidy_isolated_atoms(box):
@@ -431,14 +452,20 @@ def tidy_isolated_atoms(box):
         return isinstance(t, str) and (BARE_ELEMENT.fullmatch(t) is not None
                                        or (t.startswith('[') and (counter_ion_token(t.strip('[]')) is not None or t.endswith('-]'))))
 
-    cut = []
+    cut, junk = [], []
     for members in comp:
-        if members is core_comp or len(members) != 2:
+        if members is core_comp:
             continue
-        # exactly two atoms, one of them a free-ion token: "Br-[HBF]" from a printed "B.HBF4"; anything
-        # larger (a boronic acid CB(O)O drawn beside the core) is a real fragment and is left alone
-        if all(junk_token(symbols[i]) for i in members) and any(counter_ion_token(str(symbols[i]).strip('[]')) for i in members):
+        toks = [symbols[i] if isinstance(symbols[i], str) else '' for i in members]
+        if len(members) == 2 and all(junk_token(t) for t in toks) and any(counter_ion_token(t.strip('[]')) for t in toks):
+            # "Br-[HBF]" from a printed "B.HBF4": cut the bond, the atoms fall under the isolated-atom rules
             cut.extend(members)
+        elif len(members) <= 2 and any(t == '*' or RADICAL_TOKEN.fullmatch(t) for t in toks):
+            # "*=[N]", "[CH]": a scrap of a label read as a bonded fragment, never a drawn reactant
+            junk.extend(members)
+        elif 2 <= len(members) <= 12 and _fragment_is_solvent(box, members):
+            # EtOAc / THF / DCM printed inside the box of a reactant: not part of the structure
+            junk.extend(members)
     if cut:
         edges = [list(row) for row in edges]
         for i in cut:
@@ -471,9 +498,11 @@ def tidy_isolated_atoms(box):
     if plus and len(anions) > plus:
         anions.sort()
         drop.extend(i for _, i in anions[plus:])
-    drop = sorted(set(drop))
+    drop = sorted(set(drop) | set(junk))
     if not drop:
         return [f'cut bonds of {symbols[i]}' for i in cut]
+    if len(drop) >= len(symbols) - 1:
+        return []
     keep = [i for i in range(len(symbols)) if i not in drop]
     remap = {old: new for new, old in enumerate(keep)}
     dropped = [symbols[i] for i in drop]

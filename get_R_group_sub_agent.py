@@ -1631,6 +1631,85 @@ _raw_results_cache = {}
 _reconciled = set()
 
 
+def _degenerate_graph(entry):
+    """A reaction molecule the vision pass could not read: no SMILES, a lone placeholder, or an invalid graph."""
+    from chemietoolkit.mol_edit_plan.reconcile import smiles_valid
+    smi = entry.get('smiles')
+    return not smi or smi == '*' or smiles_valid(smi) is False or all(s == '*' for s in entry.get('symbols') or [])
+
+
+def _correct_unmatched_entries(image_path: str, reaction_results, adopted):
+    """Reaction molecules no detector box covers (a reactant printed as text: "CS2", "H2O") keep RxnIM's
+    own graph, and when that graph is degenerate the symbols are corrected by one small LLM call per
+    entry: the model sees the crop of the RxnIM box and the symbol list and returns the same number of
+    symbols as printed. Validated by count and by Graph2SMILES before it replaces anything."""
+    from chemietoolkit.mol_edit_plan.reconcile import smiles_valid
+    todo = []
+    for rx in reaction_results or []:
+        for section in ('reactants', 'products', 'conditions'):
+            for entry in rx.get(section, []) or []:
+                if isinstance(entry, dict) and entry.get('bbox') and entry.get('symbols') and entry.get('coords') and entry.get('edges')                         and not entry.get('rxnim_bbox') and _degenerate_graph(entry):
+                    todo.append((section, entry))
+    if not todo:
+        return
+    try:
+        client = llm.get_client()
+        model_name = llm.resolve_model()
+        _mk = llm.model_kwargs(model_name)
+        image = Image.open(image_path).convert('RGB')
+        w, h = image.size
+    except Exception as exc:
+        print(f"[unmatched] skipped: {type(exc).__name__}: {exc}")
+        return
+    for section, entry in todo:
+        x1, y1, x2, y2 = entry['bbox']
+        pad = 0.02
+        crop = image.crop((max(0, int((x1 - pad) * w)), max(0, int((y1 - pad) * h)), min(w, int((x2 + pad) * w)), min(h, int((y2 + pad) * h))))
+        if crop.width < 8 or crop.height < 8:
+            continue
+        if min(crop.size) < 160:
+            f = 160.0 / min(crop.size)
+            crop = crop.resize((round(crop.width * f), round(crop.height * f)))
+        buf = io.BytesIO()
+        crop.save(buf, format='PNG')
+        b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+        symbols = list(entry['symbols'])
+        what = "reactant" if section == 'reactants' else "product" if section == 'products' else "reagent"
+        prompt = (f"This crop of a reaction scheme shows one {what} that the structure recognizer could not read. It listed these atom "
+                  f"symbols, in order: {json.dumps(symbols)}. Read the crop and return the corrected symbols as JSON {{\"symbols\": [...]}} "
+                  f"with EXACTLY {len(symbols)} entries in the same order: an element symbol (C, N, O, Cl) for a drawn atom, or the printed "
+                  "abbreviation or formula in brackets for a text label ([CS2], [H2O], [NH3], [Ph], [OMe], [BF4-]). Keep the count; do not add or remove atoms.")
+        try:
+            response = retry_api_call(
+                client.chat.completions.create, max_retries=3, base_delay=3, backoff_factor=2,
+                model=model_name, messages=[{'role': 'user', 'content': [{'type': 'text', 'text': prompt},
+                                                                          {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{b64}'}}]}],
+                response_format={'type': 'json_object'}, **_mk)
+            reply = json.loads(response.choices[0].message.content or '{}')
+            new_symbols = reply.get('symbols') if isinstance(reply, dict) else None
+        except Exception as exc:
+            print(f"[unmatched] {section} bbox={entry['bbox']}: LLM call failed ({type(exc).__name__}: {str(exc)[:100]}); graph kept")
+            continue
+        if not (isinstance(new_symbols, list) and len(new_symbols) == len(symbols) and all(isinstance(x, str) and x for x in new_symbols)):
+            print(f"[unmatched] {section} bbox={entry['bbox']}: reply {new_symbols!r} not usable; graph kept")
+            continue
+        try:
+            smi, molfile, _ = _convert_graph_to_smiles(entry['coords'], new_symbols, entry['edges'])
+        except Exception as exc:
+            print(f"[unmatched] {section} bbox={entry['bbox']}: Graph2SMILES failed on {new_symbols} ({type(exc).__name__}); graph kept")
+            continue
+        if not smi or smi == '*' or smiles_valid(smi) is False:
+            print(f"[unmatched] {section} bbox={entry['bbox']}: {symbols} -> {new_symbols} still gives {smi!r}; graph kept")
+            continue
+        print(f"[unmatched] {section} bbox={entry['bbox']}: {symbols} -> {new_symbols}: {entry.get('smiles')!r} -> {smi!r}")
+        entry['symbols'] = new_symbols
+        entry['smiles'], entry['molfile'] = smi, molfile
+        if isinstance(entry.get('atoms'), list) and len(entry['atoms']) == len(new_symbols):
+            for atom, sym in zip(entry['atoms'], new_symbols):
+                if isinstance(atom, dict):
+                    atom['atom_symbol'] = sym
+
+
 def _reconcile_graphs(image_path: str, reaction_results):
     """Cross-check one reaction-result object against the molecular agent (chemietoolkit.mol_edit_plan.reconcile),
     repairing it in place: an RDKit-invalid graph on the reaction side is replaced by the valid
@@ -1662,6 +1741,8 @@ def _reconcile_graphs(image_path: str, reaction_results):
                 print(f"[adopt] {a['section']} iou={a['iou']}: {str(a['old_smiles'])[:70]} -> {str(a['new_smiles'])[:70]}")
             else:
                 print(f"[adopt] {a['section']} no detector box overlaps rxnim_bbox={a['rxnim_bbox']}; RxnIM graph kept: {str(a['old_smiles'])[:70]}")
+        if os.environ.get('RXN_UNMATCHED_LLM', '1') != '0':
+            _correct_unmatched_entries(image_path, reaction_results, adopted)
         _patch_to_reaction(reaction_results)
         print(f"rxn_agent_adopted:{reaction_results}")
         if mol_result:

@@ -80,6 +80,12 @@ def adopt(reaction_results, vision_boxes, threshold=0.5):
                     rec.update(matched=False)
                     audit.append(rec)
                     continue
+                # A donor that collapsed to a lone placeholder (one atom, "*") is worse than a valid
+                # two-atom RxnIM graph such as *N; keep the reaction's own graph then.
+                if len(best.get('symbols') or []) < 2 <= len(entry.get('symbols') or []) and smiles_valid(entry.get('smiles')) and entry.get('smiles') != '*':
+                    rec.update(matched=False, reason='donor is a single placeholder atom')
+                    audit.append(rec)
+                    continue
                 entry['rxnim_bbox'] = list(entry['bbox'])
                 entry['bbox'] = list(best['bbox'])
                 _copy_graph(best, entry)
