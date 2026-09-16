@@ -83,6 +83,13 @@ def adopt(reaction_results, vision_boxes, threshold=0.5):
                 entry['rxnim_bbox'] = list(entry['bbox'])
                 entry['bbox'] = list(best['bbox'])
                 _copy_graph(best, entry)
+                # The plan's symbol corrections were replayed on `symbols` only; the R-group back-out reads
+                # atoms[i]['atom_symbol'], so keep the two in step.
+                atoms = entry.get('atoms')
+                if isinstance(atoms, list) and len(atoms) == len(entry.get('symbols') or []):
+                    for atom, sym in zip(atoms, entry['symbols']):
+                        if isinstance(atom, dict):
+                            atom['atom_symbol'] = sym
                 rec.update(matched=True, iou=round(overlap, 3), bbox=list(best['bbox']), new_smiles=entry.get('smiles'))
                 audit.append(rec)
     return audit
