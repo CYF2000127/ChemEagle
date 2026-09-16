@@ -57,6 +57,37 @@ def _best(candidates, bbox, threshold):
     return (best, best_iou) if best is not None and best_iou >= threshold else (None, 0.0)
 
 
+def adopt(reaction_results, vision_boxes, threshold=0.5):
+    """Make the molecular agent's boxes the reaction's molecules.
+
+    Every molecule entry of the reaction (reactants / products / drawn conditions, entries with a
+    graph and a bbox) takes over the graph AND the bbox of the molecular agent's box with the
+    largest overlap (IoU >= threshold): the MolDetector box is the one canonical box of a drawn
+    molecule, and its graph already carries the edit plan's OCR corrections and definitions. The
+    RxnIM box is kept as ``rxnim_bbox``. Entries without an overlapping box keep their own graph.
+    Returns audit records (one per entry, matched or not)."""
+    audit = []
+    donors = [b for b in vision_boxes or [] if b.get('category') == '[Mol]' and b.get('bbox') and 'symbols' in b]
+    for rx in reaction_results or []:
+        for section in ('reactants', 'products', 'conditions'):
+            for entry in rx.get(section, []) or []:
+                if not (isinstance(entry, dict) and entry.get('bbox') and 'symbols' in entry):
+                    continue
+                best, overlap = _best(donors, entry['bbox'], threshold)
+                rec = {'operation': 'reaction_molecule_from_detector_box', 'section': section,
+                       'rxnim_bbox': list(entry['bbox']), 'old_smiles': entry.get('smiles')}
+                if best is None:
+                    rec.update(matched=False)
+                    audit.append(rec)
+                    continue
+                entry['rxnim_bbox'] = list(entry['bbox'])
+                entry['bbox'] = list(best['bbox'])
+                _copy_graph(best, entry)
+                rec.update(matched=True, iou=round(overlap, 3), bbox=list(best['bbox']), new_smiles=entry.get('smiles'))
+                audit.append(rec)
+    return audit
+
+
 def reconcile(reaction_results, vision_boxes, mol_boxes=None, threshold=0.7, prefer_final=False):
     """Repair invalid molecule graphs by borrowing the other pass's graph.
 

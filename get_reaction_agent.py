@@ -955,6 +955,19 @@ def get_reaction_withatoms_correctR(
     return updated_data
 
 
+def get_reaction_withatoms_raw(image_path: str) -> dict:
+    """Reaction template without an LLM pass: RxnIM for the reaction structure (which box is a
+    reactant, product or condition) plus MolNexTR and OCR on RxnIM's own crops. The molecule
+    graphs are replaced afterwards by the molecular agent's boxes (chemietoolkit.mol_edit_plan
+    .reconcile.adopt, called from get_R_group_sub_agent), which already carry the edit plan's
+    OCR corrections and definitions; the symbol-rewriting LLM call of
+    get_reaction_withatoms_correctR is not made."""
+    raw = model1.predict_image_file(image_path, molnextr=True, ocr=True)
+    updated_data = _patch_to_reaction(raw)
+    print(f"rxn_agent_output:{updated_data}")
+    return updated_data
+
+
 def get_reaction_con(
     image_path: str,
     *,

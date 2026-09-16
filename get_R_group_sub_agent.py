@@ -7,7 +7,16 @@ import numpy as np
 from PIL import Image
 import json
 from get_molecular_agent import process_reaction_image_with_multiple_products_and_text_correctR, process_reaction_image_with_multiple_products_and_text_correctmultiR_azure, process_reaction_image_with_multiple_products_and_text_correctmultiR, molecular_agent, pristine_vision_result, extract_molecule_corefs, corrected_vision_boxes
-from get_reaction_agent import get_reaction_withatoms_correctR_azure, get_reaction_con_azure, get_reaction_withatoms_correctR, get_reaction_con
+from get_reaction_agent import get_reaction_withatoms_correctR_azure, get_reaction_con_azure, get_reaction_withatoms_correctR, get_reaction_con, get_reaction_withatoms_raw
+
+# RXN_AGENT_MODE=molmap (default): the reaction agent makes no LLM call; RxnIM gives the reaction structure and
+# every molecule takes the molecular agent's box and graph (chemietoolkit.mol_edit_plan.reconcile.adopt).
+# RXN_AGENT_MODE=llm: the 2026-09-14 behaviour, an LLM rewrites the symbol lists of RxnIM's own graphs.
+def _rxn_agent_molmap():
+    return os.environ.get('RXN_AGENT_MODE', 'molmap') != 'llm'
+
+
+from chemietoolkit.helper import _patch_to_reaction  # noqa: E402
 import sys
 from rxnim import RxnIM
 import json
@@ -1444,6 +1453,20 @@ def _reconcile_graphs(image_path: str, reaction_results):
     vision_boxes = corrected_vision_boxes(image_path, mol_result)   # generic templates with the plan's OCR fixes replayed
     mol_boxes = mol_result[0].get('bboxes', []) if mol_result else None
     has_plan = bool(mol_result and isinstance(mol_result[0], dict) and mol_result[0].get('edit_plan'))
+    if _rxn_agent_molmap() and vision_boxes:
+        from chemietoolkit.mol_edit_plan.reconcile import adopt
+        adopted = adopt(reaction_results, vision_boxes)
+        n_hit = sum(1 for a in adopted if a.get('matched'))
+        print(f"[adopt] {n_hit}/{len(adopted)} reaction molecules take the detector box and the molecular agent's graph")
+        for a in adopted:
+            if a.get('matched'):
+                print(f"[adopt] {a['section']} iou={a['iou']}: {str(a['old_smiles'])[:70]} -> {str(a['new_smiles'])[:70]}")
+            else:
+                print(f"[adopt] {a['section']} no detector box overlaps rxnim_bbox={a['rxnim_bbox']}; RxnIM graph kept: {str(a['old_smiles'])[:70]}")
+        _patch_to_reaction(reaction_results)
+        print(f"rxn_agent_adopted:{reaction_results}")
+        if mol_result:
+            mol_result[0].setdefault('adopt_audit', []).extend(adopted)
     audit = reconcile(reaction_results, vision_boxes, mol_boxes=mol_boxes, prefer_final=not has_plan)   # free-form: the rewritten boxes are the OCR-corrected ones
     n_rx = sum(len(rx.get(sec, []) or []) for rx in reaction_results for sec in ('reactants', 'products', 'conditions'))
     print(f"[reconcile] checked {n_rx} reaction entries, {len(vision_boxes)} vision boxes, {len(mol_boxes or [])} molecular boxes: {len(audit)} repair(s)")
@@ -1489,7 +1512,7 @@ def get_cached_raw_results(image_path: str):
     cache the result."""
     key = (image_path, llm.resolve_model())
     if key not in _raw_results_cache:
-        _raw_results_cache[key] = get_reaction_withatoms_correctR(image_path)
+        _raw_results_cache[key] = get_reaction_withatoms_raw(image_path) if _rxn_agent_molmap() else get_reaction_withatoms_correctR(image_path)
     _reconcile(image_path)
     # Consumers (get_full_reaction, the table agent) strip and round entries in place;
     # hand out a copy so the cached, reconciled graphs stay intact for every later agent.
