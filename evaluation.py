@@ -10,7 +10,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 from rdkit import Chem, RDLogger
-from rdkit.Chem import rdFMCS
 from scipy.optimize import linear_sum_assignment
 
 
@@ -23,10 +22,6 @@ RDLogger.DisableLog("rdApp.*")
 _METAL_Z = frozenset(list(range(3, 5)) + list(range(11, 14)) + list(range(19, 32))
                      + list(range(37, 51)) + list(range(55, 85)) + list(range(87, 104))) \
     - frozenset({5, 6, 7, 8, 9, 10, 14, 15, 16, 17, 18, 33, 34, 35, 36, 52, 53, 54, 85, 86})
-
-# GED compares molecules through a maximum common substructure search, which is
-# slow: at most this many seconds per molecule pair.
-MCS_TIMEOUT = 5
 
 
 # =========================================================================== #
@@ -267,120 +262,6 @@ def aggregate_prf(tp: int, n_pred: int, n_gt: int) -> Dict[str, float]:
 
 
 # =========================================================================== #
-#  GED                                                                         #
-# =========================================================================== #
-def _mol_size(mol: Chem.Mol) -> int:
-    return mol.GetNumAtoms() + mol.GetNumBonds()
-
-
-@functools.lru_cache(maxsize=500_000)
-def _size_of(smi: str) -> int:
-    mol = Chem.MolFromSmiles(smi)
-    return _mol_size(mol) if mol is not None else 0
-
-
-@functools.lru_cache(maxsize=2_000_000)
-def _pair_ged_cached(key: Tuple[str, str]) -> int:
-    a, b = key
-    mol_a, mol_b = Chem.MolFromSmiles(a), Chem.MolFromSmiles(b)
-    if mol_a is None and mol_b is None:
-        return 0
-    if mol_a is None:
-        return _mol_size(mol_b)
-    if mol_b is None:
-        return _mol_size(mol_a)
-    try:
-        mcs = rdFMCS.FindMCS([mol_a, mol_b], timeout=MCS_TIMEOUT, matchValences=False,
-                             ringMatchesRingOnly=False, completeRingsOnly=False)
-    except Exception:
-        return _mol_size(mol_a) + _mol_size(mol_b)
-    mcs_size = (mcs.numAtoms or 0) + (mcs.numBonds or 0)
-    return max(0, _mol_size(mol_a) + _mol_size(mol_b) - 2 * mcs_size)
-
-
-def _pair_ged(smi_a: str, smi_b: str) -> int:
-    """MCS-based graph edit distance between two canonical SMILES.
-
-    The same molecule pair (a shared catalyst, a shared substrate) recurs in
-    nearly every reaction of a figure, and MCS is symmetric, so the result is
-    cached under an order-normalised key.
-    """
-    if smi_a == smi_b:
-        return 0
-    return _pair_ged_cached(tuple(sorted((smi_a, smi_b))))
-
-
-def molecule_set_ged(pred_smiles: Sequence[str], gt_smiles: Sequence[str]) -> float:
-    """Optimal-assignment GED between two unordered molecule sets.
-
-    An unmatched molecule contributes its full topological size (|V| + |E|).
-    """
-    pred_smiles, gt_smiles = list(pred_smiles), list(gt_smiles)
-    n, m = len(pred_smiles), len(gt_smiles)
-    if n == 0 and m == 0:
-        return 0.0
-    if n == 0:
-        return float(sum(_size_of(s) for s in gt_smiles))
-    if m == 0:
-        return float(sum(_size_of(s) for s in pred_smiles))
-    size = max(n, m)
-    cost = np.zeros((size, size), dtype=float)
-    pred_sizes = [_size_of(s) for s in pred_smiles]
-    gt_sizes = [_size_of(s) for s in gt_smiles]
-    for i in range(size):
-        for j in range(size):
-            if i < n and j < m:
-                cost[i, j] = _pair_ged(pred_smiles[i], gt_smiles[j])
-            elif i < n:
-                cost[i, j] = pred_sizes[i]
-            elif j < m:
-                cost[i, j] = gt_sizes[j]
-    row, col = linear_sum_assignment(cost)
-    return float(cost[row, col].sum())
-
-
-def _reaction_pair_cost(pred_rxn: dict, gt_rxn: dict) -> float:
-    return molecule_set_ged(extract_all_smiles(pred_rxn), extract_all_smiles(gt_rxn))
-
-
-def _reaction_self_cost(rxn: dict) -> float:
-    return float(sum(_size_of(s) for s in extract_all_smiles(rxn)))
-
-
-def align_reactions(pred_rxns: List[dict],
-                    gt_rxns: List[dict]) -> List[Tuple[Optional[int], Optional[int], float]]:
-    """Hungarian alignment of predicted to GT reactions, by GED.
-
-    Returns (pred_idx, gt_idx, cost) for every matched and unmatched reaction;
-    the unmatched side is None.
-    """
-    n, m = len(pred_rxns), len(gt_rxns)
-    if n == 0 and m == 0:
-        return []
-    size = max(n, m, 1)
-    cost = np.zeros((size, size), dtype=float)
-    pred_self = [_reaction_self_cost(r) for r in pred_rxns]
-    gt_self = [_reaction_self_cost(r) for r in gt_rxns]
-    for i in range(size):
-        for j in range(size):
-            if i < n and j < m:
-                cost[i, j] = _reaction_pair_cost(pred_rxns[i], gt_rxns[j])
-            elif i < n:
-                cost[i, j] = pred_self[i]
-            elif j < m:
-                cost[i, j] = gt_self[j]
-    row, col = linear_sum_assignment(cost)
-    out: List[Tuple[Optional[int], Optional[int], float]] = []
-    for i, j in zip(row, col):
-        pi = i if i < n else None
-        gj = j if j < m else None
-        if pi is None and gj is None:
-            continue
-        out.append((pi, gj, float(cost[i, j])))
-    return out
-
-
-# =========================================================================== #
 #  Scoring                                                                     #
 # =========================================================================== #
 def get_reactions(sample: Any) -> List[dict]:
@@ -394,7 +275,7 @@ def get_reactions(sample: Any) -> List[dict]:
 
 
 def score(preds: Dict[str, Any], gts: Dict[str, dict], subset: str = "",
-          only_predicted: bool = False, skip_ged: bool = False) -> Dict[str, Any]:
+          only_predicted: bool = False) -> Dict[str, Any]:
     """Corpus scores over every GT image (or one subset of them)."""
     names = sorted(gts)
     if subset:
@@ -405,8 +286,6 @@ def score(preds: Dict[str, Any], gts: Dict[str, dict], subset: str = "",
         names = [n for n in names if n in preds]
 
     soft_tp = hard_tp = n_pred = n_gt = n_missing = 0
-    total_ged = 0.0
-    ged_slots = 0
 
     for fn in names:
         gt_rxns = get_reactions(gts[fn])
@@ -422,10 +301,6 @@ def score(preds: Dict[str, Any], gts: Dict[str, dict], subset: str = "",
         n_pred += len(pred_rxns)
         n_gt += len(gt_rxns)
 
-        if not skip_ged:
-            total_ged += sum(c for _, _, c in align_reactions(pred_rxns, gt_rxns))
-        ged_slots += max(len(pred_rxns), len(gt_rxns), 1)
-
     return {
         "n_graphics": len(names),
         "n_missing_predictions": n_missing,
@@ -433,33 +308,30 @@ def score(preds: Dict[str, Any], gts: Dict[str, dict], subset: str = "",
         "n_pred_reactions": n_pred,
         "soft": aggregate_prf(soft_tp, n_pred, n_gt),
         "hard": aggregate_prf(hard_tp, n_pred, n_gt),
-        "avg_ged_per_reaction": (total_ged / ged_slots) if ged_slots else 0.0,
-        "ged_skipped": skip_ged,
     }
 
 
 def per_image_scores(preds: Dict[str, Any], gts: Dict[str, dict],
-                     only_predicted: bool = False, skip_ged: bool = True) -> Dict[str, Any]:
+                     only_predicted: bool = False) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for fn in sorted(gts):
         if only_predicted and fn not in preds:
             continue
-        r = score({fn: preds[fn]} if fn in preds else {}, {fn: gts[fn]}, skip_ged=skip_ged)
+        r = score({fn: preds[fn]} if fn in preds else {}, {fn: gts[fn]})
         out[fn] = {
             "subset": (gts[fn] or {}).get("subset"),
             "n_gt": r["n_gt_reactions"], "n_pred": r["n_pred_reactions"],
             "soft_tp": r["soft"]["tp"], "hard_tp": r["hard"]["tp"],
             "soft_f1": r["soft"]["f1"], "hard_f1": r["hard"]["f1"],
-            "ged": r["avg_ged_per_reaction"],
         }
     return out
 
 
-def evaluate(pred_path: str, gt_path, skip_ged: bool = False) -> Dict[str, Any]:
+def evaluate(pred_path: str, gt_path) -> Dict[str, Any]:
     """Score one predictions file against one or more GT files."""
     preds = load_samples(pred_path)
     gts = load_ground_truth([gt_path] if isinstance(gt_path, str) else list(gt_path))
-    report = score(preds, gts, skip_ged=skip_ged)
+    report = score(preds, gts)
     report["per_image"] = per_image_scores(preds, gts)
     report["predictions_without_gt"] = sorted(set(preds) - set(gts))
     return report
@@ -470,7 +342,7 @@ def evaluate(pred_path: str, gt_path, skip_ged: bool = False) -> Dict[str, Any]:
 # =========================================================================== #
 _HDR = (f"{'arm':16s} {'gfx':>4s} {'#pred':>6s} "
         f"{'sP':>7s} {'sR':>7s} {'sF1':>7s} {'hP':>7s} {'hR':>7s} {'hF1':>7s} "
-        f"{'GED':>8s} {'miss':>5s}")
+        f"{'miss':>5s}")
 
 
 def _fmt(tag: str, r: Dict[str, Any]) -> str:
@@ -478,7 +350,7 @@ def _fmt(tag: str, r: Dict[str, Any]) -> str:
     return (f"{tag:16s} {r['n_graphics']:4d} {r['n_pred_reactions']:6d} "
             f"{s['precision']*100:7.2f} {s['recall']*100:7.2f} {s['f1']*100:7.2f} "
             f"{h['precision']*100:7.2f} {h['recall']*100:7.2f} {h['f1']*100:7.2f} "
-            f"{r['avg_ged_per_reaction']:8.2f} {r['n_missing_predictions']:5d}")
+            f"{r['n_missing_predictions']:5d}")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -488,7 +360,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--tag", action="append", default=[], help="name for each --pred")
     ap.add_argument("--gt", action="append", required=True,
                     help="ground truth JSON; repeat to merge GT1..GT4")
-    ap.add_argument("--skip-ged", action="store_true", help="skip the slow GED alignment (GED reads 0)")
+    ap.add_argument("--skip-ged", action="store_true", help="accepted and ignored: GED is not computed in this version")
     ap.add_argument("--by-subset", action="store_true", help="also break the scores down by GT subset")
     ap.add_argument("--only-predicted", action="store_true",
                     help="pilot mode: score only the images the arm attempted")
@@ -510,18 +382,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     all_results: Dict[str, Any] = {}
     for path, tag in zip(args.pred, tags):
         preds = load_samples(path)
-        r = score(preds, gts, only_predicted=args.only_predicted, skip_ged=args.skip_ged)
+        r = score(preds, gts, only_predicted=args.only_predicted)
         all_results[tag] = {"overall": r}
         print(_fmt(tag, r))
         if args.by_subset:
             for sub in sorted({(g or {}).get("subset") for g in gts.values()} - {None}):
-                rs = score(preds, gts, subset=sub, only_predicted=args.only_predicted,
-                           skip_ged=args.skip_ged)
+                rs = score(preds, gts, subset=sub, only_predicted=args.only_predicted)
                 all_results[tag][sub] = rs
                 print(_fmt(f"  {sub}", rs))
         if args.per_image:
-            per = per_image_scores(preds, gts, only_predicted=args.only_predicted,
-                                   skip_ged=args.skip_ged)
+            per = per_image_scores(preds, gts, only_predicted=args.only_predicted)
             all_results[tag]["per_image"] = per
             with open(args.per_image, "w", encoding="utf-8") as f:
                 json.dump({tag: per}, f, ensure_ascii=False, indent=1)
