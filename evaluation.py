@@ -15,14 +15,12 @@ from scipy.optimize import linear_sum_assignment
 
 RDLogger.DisableLog("rdApp.*")
 
-
 # Metals whose salts InChI disconnects, so the covalent and ionic spellings of
 # the same substance unify (B, C, N, O, F, Ne, Si, P, S, Cl, Ar, As, Se, Br, Kr,
 # Te, I, Xe, At, Rn are excluded: those are part of the molecule proper).
 _METAL_Z = frozenset(list(range(3, 5)) + list(range(11, 14)) + list(range(19, 32))
                      + list(range(37, 51)) + list(range(55, 85)) + list(range(87, 104))) \
     - frozenset({5, 6, 7, 8, 9, 10, 14, 15, 16, 17, 18, 33, 34, 35, 36, 52, 53, 54, 85, 86})
-
 
 # =========================================================================== #
 #  I/O                                                                         #
