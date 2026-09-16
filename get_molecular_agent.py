@@ -23,7 +23,7 @@ from openai import AzureOpenAI, OpenAI, InternalServerError, RateLimitError, API
 import llm_client as llm
 from chemietoolkit.mol_edit_plan import SCHEMA as _PLAN_SCHEMA, PlanError, catalog as _plan_catalog, process as _plan_process
 from chemietoolkit.mol_edit_plan.annotate import boxed_image_base64 as _boxed_image_base64
-from chemietoolkit.mol_edit_plan.postprocess import add_counter_ion_node as _add_counter_ion_node
+from chemietoolkit.mol_edit_plan.postprocess import add_counter_ion_node as _add_counter_ion_node, tidy_isolated_atoms as _tidy_isolated_atoms
 import os
 import copy
 import re
@@ -1330,6 +1330,9 @@ def _regenerate_smiles(items):
     for item in items:
         for bbox in item.get('bboxes', []):
             if all(k in bbox for k in ('coords', 'symbols', 'edges')):
+                dropped = _tidy_isolated_atoms(bbox)      # stray "Br" from a label, a counter-ion read twice
+                if dropped:
+                    print(f"[tidy] dropped isolated atoms {dropped} from a molecule box (bbox {bbox.get('bbox')})")
                 new_smiles, new_molfile, _ = _convert_graph_to_smiles(bbox['coords'], bbox['symbols'], bbox['edges'])
                 bbox['smiles'] = new_smiles
                 bbox['molfile'] = new_molfile

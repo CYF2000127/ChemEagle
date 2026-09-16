@@ -360,7 +360,7 @@ def literal_matches(literal, value, audit, **context):
 # Free counter-ions a figure prints beside a charged molecule. Printed spelling -> the label token the
 # Graph2SMILES table expands (molnextr.constants). Only anions of salts that are drawn as separate labels.
 COUNTER_IONS = {
-    'BF4-': '[BF4-]', 'BF4': '[BF4-]', 'HBF4': '[BF4-]',
+    'BF4-': '[BF4-]', 'BF4': '[BF4-]', 'HBF4': '[BF4-]', 'HBF': '[BF4-]', 'A-HBF4': '[BF4-]', '20BF4': '[BF4-]', '38F4': '[BF4-]',   # the OCR spellings molnextr.constants also maps
     'PF6-': '[PF6-]', 'PF6': '[PF6-]',
     'SbF6-': '[SbF6-]', 'SbF6': '[SbF6-]',
     'OTf-': '[OTf-]', 'OTf': '[OTf-]', 'TfO-': '[OTf-]', 'TfO': '[OTf-]',
@@ -392,6 +392,107 @@ def add_counter_ion_node(box, token):
     if isinstance(box.get('atoms'), list):
         box['atoms'] = list(box['atoms']) + [{'atom_symbol': token, 'x': 0.98, 'y': 0.02}]
     return box
+
+
+BARE_ELEMENT = re.compile(r'^(?:B|C|N|O|F|P|S|Cl|Br|I|Si|Se)$')
+
+
+def tidy_isolated_atoms(box):
+    """Drop stray isolated atoms of a molecule box (in place): bare element tokens (a "Br" read from a
+    label next to the drawing) when the box has a bonded core, and free anions beyond the number the
+    core's positive charges can balance (a BF4- read twice). Returns the dropped tokens."""
+    symbols = box.get('symbols') or []
+    edges = box.get('edges') or []
+    if len(symbols) < 2 or len(edges) != len(symbols):
+        return []
+    # Connected components. The core is the largest one; a smaller component made only of bare
+    # element tokens and free-ion tokens is label noise read as a structure ("B.HBF4" printed beside a
+    # salt becomes Br-[HBF]): its internal bonds are cut so its atoms fall under the isolated-atom rules.
+    n = len(symbols)
+    comp, seen = [], set()
+    for i in range(n):
+        if i in seen:
+            continue
+        stack, members = [i], []
+        seen.add(i)
+        while stack:
+            a = stack.pop()
+            members.append(a)
+            for j in range(n):
+                if edges[a][j] and j not in seen:
+                    seen.add(j)
+                    stack.append(j)
+        comp.append(sorted(members))
+    core_comp = max(comp, key=len)
+    if len(core_comp) < 2:
+        return []
+
+    def junk_token(t):
+        return isinstance(t, str) and (BARE_ELEMENT.fullmatch(t) is not None
+                                       or (t.startswith('[') and (counter_ion_token(t.strip('[]')) is not None or t.endswith('-]'))))
+
+    cut = []
+    for members in comp:
+        if members is core_comp or len(members) != 2:
+            continue
+        # exactly two atoms, one of them a free-ion token: "Br-[HBF]" from a printed "B.HBF4"; anything
+        # larger (a boronic acid CB(O)O drawn beside the core) is a real fragment and is left alone
+        if all(junk_token(symbols[i]) for i in members) and any(counter_ion_token(str(symbols[i]).strip('[]')) for i in members):
+            cut.extend(members)
+    if cut:
+        edges = [list(row) for row in edges]
+        for i in cut:
+            for j in range(n):
+                edges[i][j] = edges[j][i] = 0
+        box['edges'] = edges
+        if isinstance(box.get('bonds'), list):
+            box['bonds'] = [b for b in box['bonds'] if not (isinstance(b, dict) and b.get('endpoint_atoms')
+                                                              and any(e in cut for e in b['endpoint_atoms']))]
+    deg = [sum(1 for v in row if v) for row in edges]
+    core = [i for i, d in enumerate(deg) if d > 0]
+    if not core:
+        return []
+    plus = sum(1 for i in core if isinstance(symbols[i], str) and symbols[i].startswith('[') and '+' in symbols[i])
+    cut_set = set(cut)
+    drop, anions = [], []
+    for i, d in enumerate(deg):
+        if d > 0:
+            continue
+        t = symbols[i] if isinstance(symbols[i], str) else ''
+        if BARE_ELEMENT.fullmatch(t):
+            if i in cut_set:                       # only the remains of a cut label fragment; a free ".Cl" (an HCl salt) stays
+                drop.append(i)
+        elif t.startswith('[') and counter_ion_token(t.strip('[]')):
+            anions.append((0 if i not in cut_set else 1, i))
+        elif t.startswith('[') and t.endswith('-]'):
+            anions.append((2 if i not in cut_set else 3, i))
+    # Free anions beyond what the core's positive charges balance: keep the most credible ones
+    # (a known counter-ion token first, one that was drawn free before one cut out of a label).
+    if plus and len(anions) > plus:
+        anions.sort()
+        drop.extend(i for _, i in anions[plus:])
+    drop = sorted(set(drop))
+    if not drop:
+        return [f'cut bonds of {symbols[i]}' for i in cut]
+    keep = [i for i in range(len(symbols)) if i not in drop]
+    remap = {old: new for new, old in enumerate(keep)}
+    dropped = [symbols[i] for i in drop]
+    box['symbols'] = [symbols[i] for i in keep]
+    if isinstance(box.get('coords'), list) and len(box['coords']) == len(symbols):
+        box['coords'] = [box['coords'][i] for i in keep]
+    box['edges'] = [[edges[i][j] for j in keep] for i in keep]
+    if isinstance(box.get('atoms'), list) and len(box['atoms']) == len(symbols):
+        box['atoms'] = [box['atoms'][i] for i in keep]
+    if isinstance(box.get('bonds'), list):
+        bonds = []
+        for b in box['bonds']:
+            ends = b.get('endpoint_atoms') if isinstance(b, dict) else None
+            if ends and all(e in remap for e in ends):
+                nb = dict(b)
+                nb['endpoint_atoms'] = tuple(remap[e] for e in ends)
+                bonds.append(nb)
+        box['bonds'] = bonds
+    return dropped
 
 
 def require(condition, message):
