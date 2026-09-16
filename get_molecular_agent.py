@@ -22,6 +22,7 @@ from chemietoolkit import ChemIEToolkit, utils
 from openai import AzureOpenAI, OpenAI, InternalServerError, RateLimitError, APIError
 import llm_client as llm
 from chemietoolkit.mol_edit_plan import SCHEMA as _PLAN_SCHEMA, PlanError, catalog as _plan_catalog, process as _plan_process
+from chemietoolkit.mol_edit_plan.annotate import boxed_image_base64 as _boxed_image_base64
 import os
 import copy
 import re
@@ -1415,12 +1416,23 @@ def process_reaction_image_with_multiple_products_and_text_correctmultiR_plan(
 
     with open(_PLAN_PROMPT_PATH, 'r', encoding='utf-8') as prompt_file:
         prompt = prompt_file.read()
-    with open(image_path, 'rb') as image_file:
-        base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+    # MOL_PLAN_BOXED_IMAGE=1 (default): the model sees the figure with the catalog's molecule boxes
+    # outlined and tagged by number, so "mol_003" is a place in the picture and not a set of
+    # coordinates. 0 sends the bare figure (the 2026-09-14 behaviour).
+    boxed = os.environ.get('MOL_PLAN_BOXED_IMAGE', '1') != '0'
+    if boxed:
+        base64_image = _boxed_image_base64(image_path, cat['molecules'], min_side=700)
+        user_text = ('Inspect this image and the detector-derived catalog; produce the edit plan. The thin blue boxes '
+                     'and numeric tags are a program overlay, not part of the figure: tag N marks the box of catalog '
+                     'molecule mol_00N (tag 3 = mol_003), and each tag sits just outside its box.')
+    else:
+        with open(image_path, 'rb') as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+        user_text = 'Inspect this image and the detector-derived catalog; produce the edit plan.'
     messages = [
         {'role': 'system', 'content': prompt},
         {'role': 'user', 'content': [
-            {'type': 'text', 'text': 'Inspect this image and the detector-derived catalog; produce the edit plan.'},
+            {'type': 'text', 'text': user_text},
             {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{base64_image}', 'detail': 'high'}},
             {'type': 'text', 'text': json.dumps(cat, ensure_ascii=False)}]}]
     response = retry_api_call(
