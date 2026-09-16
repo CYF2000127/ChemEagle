@@ -273,6 +273,8 @@ Go to our [ChemEAGLE.Web app demo](https://app.chemeagle.net/) to directly use o
 
 #### May 30 Update: Fixed some output bugs.
 
+#### Sep 16 Update: Any OpenAI-compatible model can now be used (a hosted API, a gateway, or a local vLLM server), and the default model is now `gemini-3.7-flash` instead of Azure OpenAI. The molecule agent corrects its vision output through an applied edit plan, unreadable SMILES of drawn catalysts and reagents are repaired, and the substituent table expands 103 more abbreviations.
+
 ### 🐍 Programmatic access: ChemEAGLE API & Python SDK (Testing)
 
 Don't want to install anything? The same engine that powers
