@@ -444,7 +444,7 @@ def retry_api_call(func, max_retries=3, base_delay=2, backoff_factor=2, *args, *
             error_message = str(e)
             
             # Check whether this is a 503 error or another retryable error
-            if error_code == 503 or 'overloaded' in error_message.lower() or '503' in error_message:
+            if error_code in (502, 503) or 'overloaded' in error_message.lower() or '503' in error_message or 'Bad Gateway' in error_message:
                 if attempt < max_retries - 1:
                     delay = base_delay * (backoff_factor ** attempt)
                     print(f"⚠️ API call failed (503/overloaded), attempt {attempt + 1}/{max_retries}. Retrying in {delay:.1f} seconds...")
