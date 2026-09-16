@@ -78,6 +78,7 @@ SCHEMA = obj(
                                     bindings=arr(obj(name=S, literal_value=S, replacement_symbol=S)),
                                     yield_percent=PERCENT, ee_percent=PERCENT)))),
     charged_molecules=arr(S),
+    counter_ions=arr(obj(molecule_id=S, ion=S, evidence=S)),
     decisions=arr(obj(molecule_id=S, action={'type': 'string', 'enum': ['expand', 'substitute', 'keep_generic', 'review']}, reason=S)),
     structure_warnings=arr(obj(molecule_id=S, reason=S)))
 
@@ -354,6 +355,43 @@ def literal_matches(literal, value, audit, **context):
     expansion, alias or name interpretation by the model: Graph2SMILES resolves
     printed names and abbreviations through its own tables."""
     return clean(literal) == clean(value)
+
+
+# Free counter-ions a figure prints beside a charged molecule. Printed spelling -> the label token the
+# Graph2SMILES table expands (molnextr.constants). Only anions of salts that are drawn as separate labels.
+COUNTER_IONS = {
+    'BF4-': '[BF4-]', 'BF4': '[BF4-]', 'HBF4': '[BF4-]',
+    'PF6-': '[PF6-]', 'PF6': '[PF6-]',
+    'SbF6-': '[SbF6-]', 'SbF6': '[SbF6-]',
+    'OTf-': '[OTf-]', 'OTf': '[OTf-]', 'TfO-': '[OTf-]', 'TfO': '[OTf-]',
+    'NTf2-': '[NTf2-]', 'NTf2': '[NTf2-]', 'Tf2N-': '[NTf2-]',
+    'ClO4-': '[ClO4-]', 'ClO4': '[ClO4-]',
+    'Cl-': '[Cl-]', 'Br-': '[Br-]', 'I-': '[I-]', 'F-': '[F-]',
+}
+
+
+def counter_ion_token(printed):
+    """The label token for a printed counter-ion spelling, None when it is not a known free anion."""
+    key = re.sub(r'[\s−⁻]', '-', str(printed or '')).replace('--', '-').strip('[]').replace('(-)', '-')
+    key = key.replace('–', '-')
+    key = key.lstrip('.-')            # ".BF4-", "-BF4" (a leading minus sign read as a dash)
+    return COUNTER_IONS.get(key) or COUNTER_IONS.get(key.rstrip('-')) if key else None
+
+
+def add_counter_ion_node(box, token):
+    """Append one isolated atom carrying the counter-ion label to a full graph box (coords, symbols,
+    edges, atoms, bonds): the molecule becomes a salt when Graph2SMILES expands it. In place."""
+    n = len(box.get('symbols') or [])
+    box['symbols'] = list(box.get('symbols') or []) + [token]
+    coords = [list(c) for c in (box.get('coords') or [])]
+    coords.append([0.98, 0.02])
+    box['coords'] = coords
+    edges = [list(r) + [0] for r in (box.get('edges') or [])]
+    edges.append([0] * (n + 1))
+    box['edges'] = edges
+    if isinstance(box.get('atoms'), list):
+        box['atoms'] = list(box['atoms']) + [{'atom_symbol': token, 'x': 0.98, 'y': 0.02}]
+    return box
 
 
 def require(condition, message):
@@ -648,6 +686,23 @@ def process(data, plan):
                           if any(VARIABLE.fullmatch(s) for s in edited[m['source_bbox_index']]['symbols'])}
     require(required_decisions <= set(decisions), f'Missing decisions for variable-bearing molecules: {sorted(required_decisions - set(decisions))}')
     require(set(groups) <= set(decisions), 'Expansion group lacks decision')
+    # 7. Counter-ions the figure prints beside a charged molecule (BF4-, PF6-, OTf- ...): recorded per
+    # source box; the merge step appends the ion as an isolated atom of every output molecule that comes
+    # from that box (the template and, when it was expanded, each variant).
+    ions_by_source = {}
+    _leaving()
+    for _k, entry in enumerate(plan.get('counter_ions') or []):
+        _entering('counter_ions', _k)
+        mid = entry['molecule_id']
+        require(mid in mols, f'Unknown molecule {mid} in counter_ions')
+        token = counter_ion_token(entry['ion'])
+        require(token is not None, f'Unknown counter-ion {entry["ion"]!r}; known: {sorted(set(COUNTER_IONS))}')
+        i = mols[mid]['source_bbox_index']
+        require(i not in ions_by_source, f'Duplicate counter-ion for {mid}')
+        require(not any(counter_ion_token(str(t).strip('[]')) for t in edited[i]['symbols'] if isinstance(t, str) and t.startswith('[')),
+                f'{mid} already carries a counter-ion atom')
+        ions_by_source[i] = token
+        audit.append({'operation': 'counter_ion', 'molecule_id': mid, 'source_bbox_index': i, 'ion': entry['ion'], 'token': token})
     _leaving()
     for _k, warning in enumerate(plan['structure_warnings']):
         _entering('structure_warnings', _k)
@@ -662,6 +717,8 @@ def process(data, plan):
         if mid not in groups:
             index_map[i] = len(out)
             out.append(copy.deepcopy(box))
+            if i in ions_by_source:
+                out[-1]['counter_ion'] = ions_by_source[i]
             provenance.append({'output_index': len(out) - 1, 'source_bbox_index': i})
             continue
         group, positions, variants = groups[mid]
@@ -671,6 +728,8 @@ def process(data, plan):
                 for j in positions[name]:
                     molecule['symbols'][j] = spliced.get(j, value)
             mi = len(out)
+            if i in ions_by_source:
+                molecule['counter_ion'] = ions_by_source[i]
             out.append(molecule)
             tid = group['source_text_id']
             label = {'category': '[Idt]', 'bbox': copy.deepcopy(texts[tid]['bbox']) if tid else None,

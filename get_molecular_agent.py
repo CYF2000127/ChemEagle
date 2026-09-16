@@ -23,6 +23,7 @@ from openai import AzureOpenAI, OpenAI, InternalServerError, RateLimitError, API
 import llm_client as llm
 from chemietoolkit.mol_edit_plan import SCHEMA as _PLAN_SCHEMA, PlanError, catalog as _plan_catalog, process as _plan_process
 from chemietoolkit.mol_edit_plan.annotate import boxed_image_base64 as _boxed_image_base64
+from chemietoolkit.mol_edit_plan.postprocess import add_counter_ion_node as _add_counter_ion_node
 import os
 import copy
 import re
@@ -205,6 +206,12 @@ def corrected_vision_boxes(image_path: str, mol_result=None) -> list:
     audit = ((mol_result or [{}])[0].get('edit_plan') or {}).get('audit') or []
     touched = set()
     for op in audit:
+        if op.get('operation') == 'counter_ion' and op.get('source_bbox_index') is not None and op.get('token'):
+            i = op['source_bbox_index']
+            if i < len(boxes) and 'symbols' in boxes[i]:
+                _add_counter_ion_node(boxes[i], op['token'])
+                touched.add(i)
+            continue
         field = _SYMBOL_OPS.get(op.get('operation'))
         i, j = op.get('source_bbox_index'), op.get('symbol_index')
         if field is None or i is None or j is None or field not in op:
@@ -1355,6 +1362,9 @@ def _merge_plan_output(plan_out, full_item):
             if row.get('compound_id'):
                 box['compound_id'] = row['compound_id']
                 box['variant_id'] = row['variant_id']
+            if ob.get('counter_ion'):
+                _add_counter_ion_node(box, ob['counter_ion'])     # drawn free anion: one more isolated atom, expanded by Graph2SMILES
+                box['counter_ion'] = ob['counter_ion']
             new_boxes.append(box)
             continue
         label = copy.deepcopy(ob)
