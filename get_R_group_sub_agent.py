@@ -91,6 +91,125 @@ def _ids_to_smiles(gpt_output, results, tool_name):
         out[smiles] = info
     print(f"[ids] {len(out)} labelled molecules from {len(by_id)} ids" + (f"; dropped unknown keys {dropped}" if dropped else ""))
     return out
+
+
+# --- table agent, id mode -------------------------------------------------------------------------------------
+def _is_variable_symbol(symbol):
+    from chemietoolkit.mol_edit_plan.postprocess import VARIABLE, composite_variable_names
+    return symbol == '*' or bool(VARIABLE.fullmatch(symbol)) or bool(composite_variable_names(symbol))
+
+
+def _template_catalog(image_path, tool_result):
+    """What the table agent's model sees: the template molecules with ids (the molecular agent's box id
+    when the molecule sits in one of its boxes), their label atoms with atom ids and a variable flag,
+    the condition texts and the molecule list. Returns (catalog, {id: molecule entry of the template})."""
+    from chemietoolkit.mol_edit_plan.postprocess import PROTECTED
+    preds = tool_result.get('reaction_prediction') or []
+    rxn = preds[0] if isinstance(preds, list) and preds and isinstance(preds[0], dict) else {}
+    mol_item = get_cached_multi_molecular(image_path)[0]
+    boxes = mol_item.get('bboxes', []) or []
+    anchors = sorted(set(_box_anchors(mol_item).values()))
+    catalog, id_map, k = {'reactants': [], 'products': [], 'conditions': [], 'molecules': tool_result.get('molecule_coref')}, {}, 0
+    for section in ('reactants', 'products'):
+        for entry in rxn.get(section, []) or []:
+            if not isinstance(entry, dict) or 'symbols' not in entry:
+                if isinstance(entry, dict) and entry.get('text'):
+                    catalog[section].append({'text': entry['text']})
+                continue
+            best, best_i = 0.0, None
+            for i in anchors:
+                v = _iou(list(boxes[i]['bbox']), list(entry.get('bbox') or []))
+                if v > best:
+                    best, best_i = v, i
+            mid = f'm{best_i}' if best > 0.95 else f'x{k}'
+            k += 1
+            id_map[mid] = entry
+            atoms = [{'atom_id': f'{mid}:a{j:03d}', 'symbol': s, 'variable': _is_variable_symbol(s)}
+                     for j, s in enumerate(entry['symbols']) if s == '*' or (isinstance(s, str) and s.startswith('[') and s not in PROTECTED)]
+            catalog[section].append({'id': mid, 'smiles': entry.get('smiles'), 'label_atoms': atoms})
+    catalog['conditions'] = [{'text': c.get('text')} for c in rxn.get('conditions', []) or [] if isinstance(c, dict) and c.get('text')]
+    return catalog, id_map
+
+
+def _apply_table_plan(input1, plan, id_map):
+    """Build the table agent's reactions from the model's plan: reaction 0_1 is the template with the
+    validated OCR corrections applied; every row clones the template, substitutes its variables by the
+    row's printed values and regenerates the SMILES. Same output shape as the symbol-rewriting path."""
+    from chemietoolkit.mol_edit_plan.postprocess import LABEL, VARIABLE, clean, composite_candidates, composite_token_ok, composite_variable_names
+    corrections = {}
+    for c in plan.get('template_corrections') or []:
+        try:
+            mid, aid = str(c['atom_id']).split(':a')
+            j = int(aid)
+            entry = id_map[mid]
+            if entry['symbols'][j] != c.get('expected_symbol'):
+                print(f"[table] correction at {c['atom_id']} skipped: expected {c.get('expected_symbol')!r}, catalog has {entry['symbols'][j]!r}")
+                continue
+            new = str(c.get('corrected_symbol') or '')
+            if not (LABEL.fullmatch(new) and new not in ('[H]',)) or new == entry['symbols'][j]:
+                print(f"[table] correction at {c['atom_id']} skipped: {new!r} is not a label")
+                continue
+            corrections[(mid, j)] = new
+        except (KeyError, ValueError, IndexError, TypeError) as exc:
+            print(f"[table] correction {c} skipped: {type(exc).__name__}: {exc}")
+    for (mid, j), new in corrections.items():
+        id_map[mid]['symbols'][j] = new
+    for mid, entry in id_map.items():
+        entry['smiles'] = _convert_graph_to_smiles(entry['coords'], entry['symbols'], entry['edges'])[0]
+
+    def variable_name(symbol):
+        if VARIABLE.fullmatch(symbol):
+            return symbol[1:-1]
+        names = composite_variable_names(symbol)
+        return names[0] if names else None
+
+    def molecules(section, bindings, rid):
+        out = []
+        for entry in input1.get(section, []) or []:
+            if not isinstance(entry, dict) or 'coords' not in entry or 'edges' not in entry:
+                out.append({'category': entry.get('category', '[Txt]'), 'bbox': entry.get('bbox', []), 'text': entry.get('text', [])})
+                continue
+            symbols = list(entry['symbols'])
+            mid = next((m for m, e in id_map.items() if e is entry), None)
+            for j, s in enumerate(symbols):
+                if not _is_variable_symbol(s):
+                    continue
+                name = variable_name(s)
+                value = None
+                for key in (name, f'{mid}:a{j:03d}', s):
+                    if key is not None and key in bindings:
+                        value = bindings[key]
+                        break
+                if value in (None, ''):
+                    continue
+                token = '[' + clean(str(value)) + ']'
+                if not LABEL.fullmatch(token):
+                    print(f"[table] row {rid}: value {value!r} for {s} at {mid}:a{j:03d} is not a label, left as drawn")
+                    continue
+                if composite_variable_names(s) and not VARIABLE.fullmatch(s):
+                    token = next((cand for cand in composite_candidates(s, name, clean(str(value))) if composite_token_ok(cand)), None)
+                    if token is None:
+                        print(f"[table] row {rid}: composite label {s} cannot take {name} = {value}, left as drawn")
+                        continue
+                symbols[j] = token
+            smiles = _convert_graph_to_smiles(entry['coords'], symbols, entry['edges'])[0]
+            out.append({'smiles': smiles, 'symbols': symbols})
+        return out
+
+    template_conditions = [{'text': c.get('text')} for c in input1.get('conditions', []) or [] if isinstance(c, dict) and c.get('text')]
+    reactions = [{'reaction_id': '0_1', 'note': 'Corrected Template', 'reactants': molecules('reactants', {}, '0_1'),
+                  'conditions': template_conditions, 'products': molecules('products', {}, '0_1'), 'additional_info': []}]
+    for n, row in enumerate(plan.get('rows') or [], start=1):
+        if not isinstance(row, dict):
+            continue
+        rid = str(row.get('reaction_id') or f'{n}_1')
+        bindings = row.get('bindings') if isinstance(row.get('bindings'), dict) else {}
+        reactions.append({'reaction_id': rid, 'reactants': molecules('reactants', bindings, rid),
+                          'conditions': row.get('conditions') or template_conditions,
+                          'products': molecules('products', bindings, rid),
+                          'additional_info': row.get('additional_info') or []})
+    print(f"[table] {len(reactions) - 1} rows built from the plan, {len(corrections)} template correction(s) applied")
+    return {'reactions': reactions}
 import sys
 from rxnim import RxnIM
 import json
@@ -2102,9 +2221,14 @@ def process_reaction_image_with_table_R_group(
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
 
-    base64_image = encode_image(image_path)
-    with open('./prompt/prompt_Table_R.txt', 'r', encoding='utf-8') as prompt_file:
-        prompt = prompt_file.read()
+    if _rgroup_agent_ids():
+        base64_image = _boxed_image_base64(image_path, _tagged_molecules(get_cached_multi_molecular(image_path)[0]), min_side=700)
+        with open('./prompt/prompt_Table_R_ids.txt', 'r', encoding='utf-8') as prompt_file:
+            prompt = prompt_file.read()
+    else:
+        base64_image = encode_image(image_path)
+        with open('./prompt/prompt_Table_R.txt', 'r', encoding='utf-8') as prompt_file:
+            prompt = prompt_file.read()
     tools = [
         {
             'type': 'function',
@@ -2179,13 +2303,18 @@ def process_reaction_image_with_table_R_group(
         print(f"WARNING [full_reaction agent]: Unknown tool called: {tool_name}, using get_full_reaction.")
         tool_result = get_full_reaction(image_path)
 
-    # Build tool-call result message
+    # Build tool-call result message. In id mode the model sees the template catalog (ids, label atoms,
+    # condition texts) instead of the full symbol lists.
+    table_catalog, table_id_map = (None, None)
+    if _rgroup_agent_ids():
+        table_catalog, table_id_map = _template_catalog(image_path, tool_result)
+        print(f"table_catalog:{json.dumps(table_catalog, ensure_ascii=False)}")
     function_call_result_message = {
         'role': 'tool',
         'name': tool_name,  # Gemini API requires the name field
         'content': json.dumps({
             'image_path': image_path,
-            f'{tool_name}':(tool_result),
+            f'{tool_name}': (table_catalog if table_catalog is not None else tool_result),
         }),
         'tool_call_id': tool_call_id,
     }
@@ -2376,6 +2505,9 @@ def process_reaction_image_with_table_R_group(
     else:
         print(f"DEBUG [agent]: input2 is not a dict, value: {input2}")
     
-    updated_input = replace_symbols_and_generate_smiles(input1, input2)
+    if table_id_map is not None:
+        updated_input = _apply_table_plan(input1, input2, table_id_map)
+    else:
+        updated_input = replace_symbols_and_generate_smiles(input1, input2)
     print(f"txt_R_group_agent_output:{updated_input}")
     return updated_input
