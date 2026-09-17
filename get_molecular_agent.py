@@ -23,7 +23,8 @@ from openai import AzureOpenAI, OpenAI, InternalServerError, RateLimitError, API
 import llm_client as llm
 from chemietoolkit.mol_edit_plan import SCHEMA as _PLAN_SCHEMA, PlanError, catalog as _plan_catalog, process as _plan_process
 from chemietoolkit.mol_edit_plan.annotate import boxed_image_base64 as _boxed_image_base64
-from chemietoolkit.mol_edit_plan.postprocess import add_counter_ion_node as _add_counter_ion_node, tidy_isolated_atoms as _tidy_isolated_atoms
+from chemietoolkit.mol_edit_plan.postprocess import (add_counter_ion_node as _add_counter_ion_node, tidy_isolated_atoms as _tidy_isolated_atoms,
+                                                     repair_ring_bonds as _repair_ring_bonds)
 import os
 import copy
 import re
@@ -180,8 +181,31 @@ def extract_molecule_corefs(image_path: str) -> list:
     cross-checks against the reaction agent.'''
     if image_path not in _vision_cache:
         image = Image.open(image_path).convert('RGB')
-        _vision_cache[image_path] = model.extract_molecule_corefs_from_figures([image])
+        _vision_cache[image_path] = _repair_vision_graphs(model.extract_molecule_corefs_from_figures([image]))
     return copy.deepcopy(_vision_cache[image_path])
+
+
+def _repair_vision_graphs(result):
+    """Deterministic graph repairs on the pristine vision result, before anything reads it: misplaced ring
+    double bonds (postprocess.repair_ring_bonds: a pyrazole read as *C1=NN(*)=CC1) and the ketene patch
+    (helper._patch_to_mol: a ketene that lost its central carbon), so the plan catalog, the donor boxes of the
+    reaction agent and the final output all see the same corrected graph."""
+    for item in result or []:
+        for box in item.get('bboxes', []) or []:
+            if not all(k in box for k in ('coords', 'symbols', 'edges')):
+                continue
+            changed = _repair_ring_bonds(box)
+            if not changed:
+                continue
+            old = box.get('smiles')
+            try:
+                box['smiles'], box['molfile'], _ = _convert_graph_to_smiles(box['coords'], box['symbols'], box['edges'])
+            except Exception as exc:
+                print(f"[repair] ring bonds: regeneration failed ({type(exc).__name__}: {exc})")
+                continue
+            print(f"[repair] ring bonds {changed}: {old!r} -> {box['smiles']!r}")
+    _patch_to_mol(result)
+    return result
 
 
 def pristine_vision_result(image_path: str):

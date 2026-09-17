@@ -527,6 +527,140 @@ def tidy_isolated_atoms(box):
     return dropped
 
 
+# ---- ring double-bond repair --------------------------------------------------------------------------
+RING_VALENCE = {'C': 4, 'N': 3, 'P': 3, 'O': 2, 'S': 2, 'B': 3, 'Si': 4}
+_BOND_NAME = {1: 'single', 2: 'double', 3: 'triple', 4: 'aromatic', 5: 'solid wedge', 6: 'dashed wedge'}
+_PLAIN_ATOM = re.compile(r"\[?([A-Z][a-z]?)(H(\d?))?\]?$")
+
+
+def neutral_atom(symbol):
+    """(element, explicit H count) for a neutral plain-element token (C, N, [NH], [CH2]); None for labels,
+    ions, wildcards and elements without a fixed neutral valence."""
+    if not isinstance(symbol, str) or CHARGED.fullmatch(symbol) or symbol.startswith('[') != symbol.endswith(']'):
+        return None
+    m = _PLAIN_ATOM.fullmatch(symbol)
+    if not m or m.group(1) not in RING_VALENCE or (m.group(2) and not symbol.startswith('[')):
+        return None
+    h = int(m.group(3)) if m.group(3) else (1 if m.group(2) else 0)
+    return m.group(1), h
+
+
+def _ring_bond_set(edges):
+    from rdkit import Chem
+    n = len(edges)
+    m = Chem.RWMol()
+    for _ in range(n):
+        m.AddAtom(Chem.Atom(6))
+    for i in range(n):
+        for j in range(i + 1, n):
+            if edges[i][j]:
+                m.AddBond(i, j, Chem.BondType.SINGLE)
+    Chem.FastFindRings(m)
+    rb = set()
+    for ring in m.GetRingInfo().BondRings():
+        for b in ring:
+            bond = m.GetBondWithIdx(b)
+            a, c = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+            rb.add((min(a, c), max(a, c)))
+    return rb
+
+
+def _bond_components(bond_set):
+    adj = {}
+    for a, b in bond_set:
+        adj.setdefault(a, set()).add(b)
+        adj.setdefault(b, set()).add(a)
+    seen, comps = set(), []
+    for s in sorted(adj):
+        if s in seen:
+            continue
+        stack, comp = [s], set()
+        while stack:
+            x = stack.pop()
+            if x in comp:
+                continue
+            comp.add(x)
+            stack.extend(adj[x] - comp)
+        seen |= comp
+        comps.append(comp)
+    return comps
+
+
+def repair_ring_bonds(box, max_bonds=20, max_changes=4):
+    """Move misplaced ring double bonds so that no neutral ring atom exceeds its valence (a pyrazole the
+    tool wrote as *C1=NN(*)=CC1 becomes *c1ccn(*)n1). Only ring systems drawn with plain single/double
+    bonds are touched, the number of double bonds in the system is kept, the assignment closest to the
+    tool's wins, and nothing changes when no neutral assignment exists (an azolium or pyridinium stays
+    as read, so the plan's charge step still applies). Edits edges/bonds in place; returns the list of
+    (i, j, old_order, new_order)."""
+    import itertools
+    symbols, edges = box.get('symbols'), box.get('edges')
+    if not isinstance(symbols, list) or not isinstance(edges, list) or len(edges) != len(symbols):
+        return []
+    n = len(symbols)
+    order = {1: 1.0, 2: 2.0, 3: 3.0, 4: 1.5, 5: 1.0, 6: 1.0}
+    atom = [neutral_atom(s) for s in symbols]
+    valence = [sum(order.get(edges[i][j], 1.0) for j in range(n) if j != i and edges[i][j]) + (atom[i][1] if atom[i] else 0)
+               for i in range(n)]
+    bad = [i for i in range(n) if atom[i] and valence[i] > RING_VALENCE[atom[i][0]] + 1e-6]
+    if not bad:
+        return []
+    try:
+        rb = _ring_bond_set(edges)
+    except Exception:
+        return []
+    changed = []
+    for comp in _bond_components(rb):
+        if not any(i in comp for i in bad):
+            continue
+        bonds = sorted(b for b in rb if b[0] in comp)
+        if len(bonds) > max_bonds or any(edges[a][b] not in (1, 2) for a, b in bonds):
+            continue
+        k = sum(1 for a, b in bonds if edges[a][b] == 2)
+        if k == 0:
+            continue
+        incident = {i: [c for c, (a, b) in enumerate(bonds) if i in (a, b)] for i in comp}
+        base = {i: valence[i] - sum(order[edges[bonds[c][0]][bonds[c][1]]] for c in incident[i]) for i in comp}
+        limit = {i: (RING_VALENCE[atom[i][0]] if atom[i] else None) for i in comp}
+        best = None
+        for chosen in itertools.combinations(range(len(bonds)), k):
+            used = set()
+            ok = True
+            for c in chosen:
+                a, b = bonds[c]
+                if a in used or b in used:
+                    ok = False
+                    break
+                used.update((a, b))
+            if not ok:
+                continue
+            for i in comp:
+                if limit[i] is None:
+                    continue
+                if base[i] + sum(2.0 if c in chosen else 1.0 for c in incident[i]) > limit[i] + 1e-6:
+                    ok = False
+                    break
+            if not ok:
+                continue
+            diff = sum(1 for c, (a, b) in enumerate(bonds) if (2 if c in chosen else 1) != edges[a][b])
+            if diff <= max_changes and (best is None or diff < best[0]):
+                best = (diff, chosen)
+        if best is None or best[0] == 0:
+            continue
+        for c, (a, b) in enumerate(bonds):
+            new = 2 if c in best[1] else 1
+            if new != edges[a][b]:
+                changed.append((a, b, edges[a][b], new))
+                edges[a][b] = edges[b][a] = new
+    if changed and isinstance(box.get('bonds'), list):
+        by_ends = {(min(a, b), max(a, b)): new for a, b, _o, new in changed}
+        for bd in box['bonds']:
+            ends = bd.get('endpoint_atoms') if isinstance(bd, dict) else None
+            if ends and len(ends) == 2 and (min(ends), max(ends)) in by_ends:
+                bd['bond_type'] = _BOND_NAME[by_ends[(min(ends), max(ends))]]
+    return changed
+
+
 def require(condition, message):
     if not condition:
         raise PlanError(message, entry=_CURRENT_ENTRY)
