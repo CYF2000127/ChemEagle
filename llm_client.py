@@ -378,12 +378,13 @@ def final_json_call(client: OpenAI, model_name: str, messages: list, mk: dict, *
                 if retry is None:
                     chunks = client.chat.completions.create(**kw)
                 else:
-                    chunks = retry(client.chat.completions.create, max_retries=5, base_delay=3, backoff_factor=2, **kw)
+                    chunks = retry(client.chat.completions.create, max_retries=6, base_delay=3, backoff_factor=2, **kw)
                 return _stream_to_message(_counted(chunks, received))
             return retry_broken_stream(run)
         if retry is None:
             return client.chat.completions.create(**kw)
-        return retry(client.chat.completions.create, max_retries=5, base_delay=3, backoff_factor=2, **kw)
+        # six retries (3 s ... 96 s, about three minutes in all): a gateway 502 window of ~90 s was seen on 2026-09-17
+        return retry(client.chat.completions.create, max_retries=6, base_delay=3, backoff_factor=2, **kw)
 
     messages = list(messages)
     response = None

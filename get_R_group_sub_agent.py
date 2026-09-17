@@ -328,18 +328,23 @@ def normalize_product_variant_output(data: dict) -> dict:
     #     All role words to skip when extracting labels:
     skip_words = reactant_product_roles | condition_roles
 
-    # First collect all SMILES already present in reactants/products for deduplication
+    # First collect all SMILES already present in reactants/products for deduplication. A reactant the agent
+    # labelled as a condition is not counted: it is moved to the conditions below.
+    from chemietoolkit.mol_edit_plan.variants import condition_role_smiles
+    _cond_role = condition_role_smiles(original_molecule_list)
     all_rxn_smiles = set()
     if 'reaction_template' in data:
         template = data['reaction_template']
         for s in template.get('reactants', []):
-            all_rxn_smiles.add(s)
+            if s not in _cond_role:
+                all_rxn_smiles.add(s)
         for s in template.get('products', []):
             all_rxn_smiles.add(s)
     if 'reactions' in data:
         for rxn_data in data['reactions'].values():
             for s in rxn_data.get('reactants', []):
-                all_rxn_smiles.add(s)
+                if s not in _cond_role:
+                    all_rxn_smiles.add(s)
             for s in rxn_data.get('products', []):
                 all_rxn_smiles.add(s)
 
@@ -370,6 +375,11 @@ def normalize_product_variant_output(data: dict) -> dict:
     # Inject unassigned molecules into reaction template conditions
     if unassigned_conditions and normalized_reactions:
         normalized_reactions[0]['conditions'].extend(unassigned_conditions)
+    # A molecule the agent calls a condition but RxnIM placed among the reactants (a catalyst drawn in the
+    # reactant row) belongs to the conditions of the template and of every row.
+    if unassigned_conditions and normalized_reactions:
+        from chemietoolkit.mol_edit_plan.variants import move_condition_molecules
+        move_condition_molecules(normalized_reactions, original_molecule_list)
     
     # 2. Process reactions dictionary (numbering starts from '1_1')
     if 'reactions' in data:
@@ -410,6 +420,10 @@ def normalize_product_variant_output(data: dict) -> dict:
             }
             normalized_reactions.append(normalized_reaction)
     
+    # Catalyst screening: several condition molecules with their own outcome (or a labelled series) are one
+    # reaction each; the rows are generated here so the final synthesis only has to copy them.
+    from chemietoolkit.mol_edit_plan.variants import expand_catalyst_screening
+    normalized_reactions = expand_catalyst_screening(normalized_reactions, original_molecule_list)
     return {
         'reactions': normalized_reactions,
         'original_molecule_list': original_molecule_list
@@ -1711,6 +1725,7 @@ def _correct_unmatched_entries(image_path: str, reaction_results, adopted):
 
 
 _PLACEHOLDER = re.compile(r"^\[((?:R\d*|R[abcdf]|Ar\d*|X\d*|Y\d*|Z\d*|Q|A|E|EWG|Nu))('*)\]$")
+_NUMBERED = re.compile(r"^\[(\d+\*)\]$")          # the tool's own Rn notation, [1*]
 
 
 def _harmonize_placeholders(reaction_results):
@@ -1729,6 +1744,8 @@ def _harmonize_placeholders(reaction_results):
                     m = _PLACEHOLDER.match(t) if isinstance(t, str) else None
                     if m:
                         names.add(m.group(1) + m.group(2))
+                    elif isinstance(t, str) and _NUMBERED.match(t):
+                        names.add(_NUMBERED.match(t).group(1))
             sides[section] = names
         for section, other in (('products', 'reactants'), ('reactants', 'products')):
             for e in rx.get(section, []) or []:
@@ -1751,6 +1768,26 @@ def _harmonize_placeholders(reaction_results):
                         e['smiles'], e['molfile'], _ = _convert_graph_to_smiles(e['coords'], e['symbols'], e['edges'])
                     except Exception as exc:
                         print(f"[harmonize] regeneration failed: {type(exc).__name__}: {exc}")
+        # one bare * on a side while the other side has exactly one placeholder name this side lacks: the tool
+        # dropped that label ([1*] read as *); restoring the name lets the back-out map the site
+        for section, other in (('products', 'reactants'), ('reactants', 'products')):
+            missing = sorted(sides[other] - sides[section])
+            bare = [(e, j) for e in rx.get(section, []) or []
+                    if isinstance(e, dict) and e.get('symbols') and e.get('coords') and e.get('edges')
+                    for j, t in enumerate(e['symbols']) if t == '*']
+            if len(missing) != 1 or len(bare) != 1:
+                continue
+            e, j = bare[0]
+            new_t = f'[{missing[0]}]'
+            e['symbols'][j] = new_t
+            if isinstance(e.get('atoms'), list) and j < len(e['atoms']) and isinstance(e['atoms'][j], dict):
+                e['atoms'][j]['atom_symbol'] = new_t
+            sides[section].add(missing[0])
+            renames.append((section, '*', new_t))
+            try:
+                e['smiles'], e['molfile'], _ = _convert_graph_to_smiles(e['coords'], e['symbols'], e['edges'])
+            except Exception as exc:
+                print(f"[harmonize] regeneration failed: {type(exc).__name__}: {exc}")
     for section, old_t, new_t in renames:
         print(f"[harmonize] {section}: {old_t} -> {new_t} (the other side names it {new_t})")
     return renames
@@ -2190,35 +2227,44 @@ def process_reaction_image_with_product_variant_R_group(
             ],
     }
 
-    # Generate new response (with retry mechanism)
-    response, _ = llm.final_json_call(
-        client, completion_payload["model"], completion_payload["messages"], _mk,
-        tool_map=TOOL_MAP, tool_arg=image_path, retry=retry_api_call)
-
-    # Get GPT-generated result
-    raw_content = response.choices[0].message.content
-
-    # Check whether content is empty
-    if not raw_content or not raw_content.strip():
-        print(f"ERROR [agent]: Model returned empty content")
-        print(f"Full response object: {response}")
-        raise ValueError("Model returned empty content. Please check the model response.")
-
-    print(f"DEBUG [agent]: Raw content preview (first 500 chars):\n{raw_content[:500]}")
-
-    # Parse JSON
+    # Generate new response (with retry mechanism); a reply that is not JSON (cut off mid-string) is asked for once more
     gpt_output = None
+    raw_content = None
+    final_messages = completion_payload["messages"]
+    for _attempt in range(2):
+        response, final_messages = llm.final_json_call(
+            client, completion_payload["model"], final_messages, _mk,
+            tool_map=TOOL_MAP, tool_arg=image_path, retry=retry_api_call)
 
-    try:
-        gpt_output = json.loads(raw_content)
-        print(f"DEBUG [agent]: Successfully parsed JSON directly")
-    except json.JSONDecodeError as _e_strict:
-        gpt_output = None
+        # Get GPT-generated result
+        raw_content = response.choices[0].message.content
+
+        # Check whether content is empty
+        if not raw_content or not raw_content.strip():
+            print(f"ERROR [agent]: Model returned empty content")
+            print(f"Full response object: {response}")
+            raise ValueError("Model returned empty content. Please check the model response.")
+
+        print(f"DEBUG [agent]: Raw content preview (first 500 chars):\n{raw_content[:500]}")
+
+        # Parse JSON
         try:
-            gpt_output = _loads_lenient(raw_content)       # fences / raw or mixed backslashes in SMILES (E/Z bonds)
-            print(f"DEBUG [agent]: Parsed JSON after lenient repair (strict error: {_e_strict})")
-        except json.JSONDecodeError as _e_lenient:
-            print(f"ERROR [agent]: strict parse: {_e_strict}; lenient parse: {_e_lenient}")
+            gpt_output = json.loads(raw_content)
+            print(f"DEBUG [agent]: Successfully parsed JSON directly")
+        except json.JSONDecodeError as _e_strict:
+            gpt_output = None
+            try:
+                gpt_output = _loads_lenient(raw_content)       # fences / raw or mixed backslashes in SMILES (E/Z bonds)
+                print(f"DEBUG [agent]: Parsed JSON after lenient repair (strict error: {_e_strict})")
+            except json.JSONDecodeError as _e_lenient:
+                print(f"ERROR [agent]: strict parse: {_e_strict}; lenient parse: {_e_lenient}")
+        if gpt_output is not None or _attempt:
+            break
+        print("WARNING [agent]: reply is not valid JSON; asking once more for the complete object")
+        final_messages = list(final_messages) + [
+            {'role': 'assistant', 'content': raw_content[-4000:]},
+            {'role': 'user', 'content': 'That reply was not valid JSON (it was cut off or contained commentary). '
+                                        'Reply again with the complete JSON object only, one entry per molecule id, no prose.'}]
     if gpt_output is None:
         print(f"ERROR [agent]: Failed to parse JSON from model response; raw content saved to "
               f"{llm.dump_unparsable(raw_content, 'rgroup_agent')}")
