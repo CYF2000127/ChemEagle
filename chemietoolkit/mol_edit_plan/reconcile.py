@@ -86,6 +86,12 @@ def adopt(reaction_results, vision_boxes, threshold=0.5):
                     rec.update(matched=False, reason='donor is a single placeholder atom')
                     audit.append(rec)
                     continue
+                # A donor whose graph RDKit cannot read (*B(O)OC(*)=O[H]) must not replace a readable one:
+                # the two crops differ, and only the readable graph can be scored or back-substituted.
+                if smiles_valid(best.get('smiles')) is False and smiles_valid(entry.get('smiles')):
+                    rec.update(matched=False, reason='donor graph invalid, own graph valid')
+                    audit.append(rec)
+                    continue
                 entry['rxnim_bbox'] = list(entry['bbox'])
                 entry['bbox'] = list(best['bbox'])
                 _copy_graph(best, entry)
