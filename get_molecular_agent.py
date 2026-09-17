@@ -24,7 +24,7 @@ import llm_client as llm
 from chemietoolkit.mol_edit_plan import SCHEMA as _PLAN_SCHEMA, PlanError, catalog as _plan_catalog, process as _plan_process
 from chemietoolkit.mol_edit_plan.annotate import boxed_image_base64 as _boxed_image_base64
 from chemietoolkit.mol_edit_plan.postprocess import (add_counter_ion_node as _add_counter_ion_node, tidy_isolated_atoms as _tidy_isolated_atoms,
-                                                     repair_ring_bonds as _repair_ring_bonds)
+                                                     repair_ring_bonds as _repair_ring_bonds, drop_dirt_atoms as _drop_dirt_atoms)
 import os
 import copy
 import re
@@ -186,7 +186,8 @@ def extract_molecule_corefs(image_path: str) -> list:
 
 
 def _repair_vision_graphs(result):
-    """Deterministic graph repairs on the pristine vision result, before anything reads it: misplaced ring
+    """Deterministic graph repairs on the pristine vision result, before anything reads it: drawing dirt read
+    as a loose atom (postprocess.drop_dirt_atoms: a speck that becomes an extra "*." fragment), misplaced ring
     double bonds (postprocess.repair_ring_bonds: a pyrazole read as *C1=NN(*)=CC1) and the ketene patch
     (helper._patch_to_mol: a ketene that lost its central carbon), so the plan catalog, the donor boxes of the
     reaction agent and the final output all see the same corrected graph."""
@@ -194,8 +195,9 @@ def _repair_vision_graphs(result):
         for box in item.get('bboxes', []) or []:
             if not all(k in box for k in ('coords', 'symbols', 'edges')):
                 continue
+            dirt = _drop_dirt_atoms(box)
             changed = _repair_ring_bonds(box)
-            if not changed:
+            if not (changed or dirt):
                 continue
             old = box.get('smiles')
             try:
@@ -203,7 +205,7 @@ def _repair_vision_graphs(result):
             except Exception as exc:
                 print(f"[repair] ring bonds: regeneration failed ({type(exc).__name__}: {exc})")
                 continue
-            print(f"[repair] ring bonds {changed}: {old!r} -> {box['smiles']!r}")
+            print(f"[repair] {'dirt ' + str(dirt) + ' ' if dirt else ''}{'ring bonds ' + str(changed) if changed else ''}: {old!r} -> {box['smiles']!r}")
     _patch_to_mol(result)
     return result
 

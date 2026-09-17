@@ -421,6 +421,47 @@ def _fragment_is_solvent(box, members):
         return False
 
 
+DIRT_TOKEN = re.compile(r"\[?[.,:;'`·•∙]+\]?$")      # a speck in the drawing read as an atom
+
+
+def drop_dirt_atoms(box, min_core=5):
+    """Drop disconnected single atoms that are dirt in the drawing rather than chemistry (in place):
+    a speck read as "[.]" or "*", or a lone uncharged carbon, beside a real molecule (a bonded core of at
+    least ``min_core`` atoms). Graph2SMILES renders them as an extra "*." or "C." fragment, which makes
+    every reaction built from that molecule miss. Counter-ions (charged), a free ".Cl" of an HCl salt and
+    every bonded atom are kept. Returns the dropped tokens."""
+    symbols, edges = box.get('symbols') or [], box.get('edges') or []
+    if len(symbols) < 2 or len(edges) != len(symbols):
+        return []
+    deg = [sum(1 for j, v in enumerate(row) if v and j != i) for i, row in enumerate(edges)]
+    if sum(1 for d in deg if d) < min_core:
+        return []
+    drop = [i for i, d in enumerate(deg)
+            if d == 0 and isinstance(symbols[i], str)
+            and (symbols[i] == '*' or symbols[i] == 'C' or DIRT_TOKEN.fullmatch(symbols[i]))]
+    if not drop or len(drop) >= len(symbols) - 1:
+        return []
+    keep = [i for i in range(len(symbols)) if i not in drop]
+    remap = {old: new for new, old in enumerate(keep)}
+    dropped = [symbols[i] for i in drop]
+    box['symbols'] = [symbols[i] for i in keep]
+    if isinstance(box.get('coords'), list) and len(box['coords']) == len(symbols):
+        box['coords'] = [box['coords'][i] for i in keep]
+    box['edges'] = [[edges[i][j] for j in keep] for i in keep]
+    if isinstance(box.get('atoms'), list) and len(box['atoms']) == len(symbols):
+        box['atoms'] = [box['atoms'][i] for i in keep]
+    if isinstance(box.get('bonds'), list):
+        bonds = []
+        for b in box['bonds']:
+            ends = b.get('endpoint_atoms') if isinstance(b, dict) else None
+            if ends and all(e in remap for e in ends):
+                nb = dict(b)
+                nb['endpoint_atoms'] = tuple(remap[e] for e in ends)
+                bonds.append(nb)
+        box['bonds'] = bonds
+    return dropped
+
+
 def tidy_isolated_atoms(box):
     """Drop stray isolated atoms of a molecule box (in place): bare element tokens (a "Br" read from a
     label next to the drawing) when the box has a bonded core, and free anions beyond the number the
