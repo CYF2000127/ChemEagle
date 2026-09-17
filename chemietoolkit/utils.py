@@ -473,8 +473,11 @@ def get_r_group_frags_and_substitute(other_prod_mol, query, reactant_mols, react
                     editable = Chem.EditableMol(combined)
                     atomIdxAdder = reactant_mols[reactant_idx].GetNumAtoms()
                     for r_group, r_index, connect_index in reactant_information[reactant_idx]:
+                        # keep the template's bond order at the R site: *=C(N)N with * = O is a urea, not a hemiaminal
+                        site_bond = reactant_mols[reactant_idx].GetBondBetweenAtoms(r_index, connect_index)
+                        site_order = site_bond.GetBondType() if site_bond is not None and site_bond.GetBondType() in (Chem.BondType.DOUBLE, Chem.BondType.TRIPLE) else Chem.BondType.SINGLE
                         Chem.EditableMol.RemoveBond(editable, r_index, connect_index)
-                        Chem.EditableMol.AddBond(editable, connect_index, atomIdxAdder + r_group_information[r_group][1], Chem.BondType.SINGLE)
+                        Chem.EditableMol.AddBond(editable, connect_index, atomIdxAdder + r_group_information[r_group][1], site_order)
                         atomIdxAdder += r_group_information[r_group][0].GetNumAtoms()
                     r_indices = [i[1] for i in reactant_information[reactant_idx]]
 
@@ -938,10 +941,15 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
 
         for other_prod in coref_results_dict:
 
-            #check if they match the product label regex
+            #check if they match the product label regex, or carry the explicit "product" role of the id-mode agent
+            #(its labels need not follow the template's numbering: "0", "2", "8" still mark drawn products)
             found_good_label = False
-            for parsed in coref_results_dict[other_prod]:
-                if re.search(label_pattern, parsed) and not found_good_label:
+            info = coref_results_dict[other_prod]
+            role_product = isinstance(info, list) and any(isinstance(x, str) and x.lower().strip() == 'product' for x in info)
+            for parsed in info:
+                if not isinstance(parsed, str):
+                    continue
+                if (re.search(label_pattern, parsed) or (role_product and parsed is info[0])) and not found_good_label:
                     found_good_label = True
                     other_prod_mol = Chem.MolFromSmiles(other_prod)
 
