@@ -98,6 +98,28 @@ def _stream_wanted(model_name: Optional[str]) -> bool:
     return model_family(resolve_model(model_name)) != "other"
 
 
+GATEWAY_STATUS = (502, 503, 504)
+
+
+def retry_gateway(call, attempts=4, base_delay=3.0):
+    """Retry a request the gateway itself refused (a 502 Bad Gateway page from the Azure front end, or a 503 /
+    504 while the upstream deployment restarts): the request never reached the model and the same one usually
+    goes through seconds later. Everything else, including any 4xx and any error raised after the model
+    answered, is re-raised at once. Callers that already retry (``retry_api_call``, ``final_json_call``) keep
+    working: this only makes the client itself survive a blip, which the planner call had no cover for."""
+    from openai import APIStatusError
+    for attempt in range(attempts):
+        try:
+            return call()
+        except APIStatusError as exc:
+            status = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+            if status not in GATEWAY_STATUS or attempt == attempts - 1:
+                raise
+            delay = base_delay * (2 ** attempt)
+            print(f"[llm_client] gateway {status}; retrying in {delay:.0f}s ({attempt + 2}/{attempts})", flush=True)
+            time.sleep(delay)
+
+
 def streaming_create(original):
     """Wrap ``client.chat.completions.create`` so a non-streaming request goes out as a stream and comes back
     as the same ``ChatCompletion`` object the caller would have received; only the transport changes.
@@ -110,7 +132,7 @@ def streaming_create(original):
     :func:`_stream_wanted` is false, pass through unchanged."""
     def create(*args, **kwargs):
         if kwargs.get("stream") or not _stream_wanted(kwargs.get("model")):
-            return original(*args, **kwargs)
+            return retry_gateway(lambda: original(*args, **kwargs))
         kw = dict(kwargs, stream=True)
         options = dict(kw.get("stream_options") or {})
         options.setdefault("include_usage", True)
@@ -118,7 +140,7 @@ def streaming_create(original):
 
         def run(received):
             return _collect_completion(_counted(original(*args, **kw), received))
-        return retry_broken_stream(run)
+        return retry_gateway(lambda: retry_broken_stream(run))
 
     return create
 
