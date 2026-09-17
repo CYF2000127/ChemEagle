@@ -545,7 +545,8 @@ def neutral_atom(symbol):
     return m.group(1), h
 
 
-def _ring_bond_set(edges):
+def _ring_bonds_per_ring(edges):
+    """The bond sets of the SSSR rings of the tool's graph (RDKit ring perception on a dummy graph)."""
     from rdkit import Chem
     n = len(edges)
     m = Chem.RWMol()
@@ -555,44 +556,22 @@ def _ring_bond_set(edges):
         for j in range(i + 1, n):
             if edges[i][j]:
                 m.AddBond(i, j, Chem.BondType.SINGLE)
-    Chem.FastFindRings(m)
-    rb = set()
-    for ring in m.GetRingInfo().BondRings():
-        for b in ring:
-            bond = m.GetBondWithIdx(b)
-            a, c = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
-            rb.add((min(a, c), max(a, c)))
-    return rb
+    rings = []
+    for ring in Chem.GetSymmSSSR(m):            # smallest rings: FastFindRings may return a fused envelope instead
+        members = set(int(a) for a in ring)
+        rings.append(sorted((i, j) for i in members for j in members if i < j and edges[i][j]))
+    return rings
 
 
-def _bond_components(bond_set):
-    adj = {}
-    for a, b in bond_set:
-        adj.setdefault(a, set()).add(b)
-        adj.setdefault(b, set()).add(a)
-    seen, comps = set(), []
-    for s in sorted(adj):
-        if s in seen:
-            continue
-        stack, comp = [s], set()
-        while stack:
-            x = stack.pop()
-            if x in comp:
-                continue
-            comp.add(x)
-            stack.extend(adj[x] - comp)
-        seen |= comp
-        comps.append(comp)
-    return comps
-
-
-def repair_ring_bonds(box, max_bonds=20, max_changes=4):
-    """Move misplaced ring double bonds so that no neutral ring atom exceeds its valence (a pyrazole the
-    tool wrote as *C1=NN(*)=CC1 becomes *c1ccn(*)n1). Only ring systems drawn with plain single/double
-    bonds are touched, the number of double bonds in the system is kept, the assignment closest to the
-    tool's wins, and nothing changes when no neutral assignment exists (an azolium or pyridinium stays
-    as read, so the plan's charge step still applies). Edits edges/bonds in place; returns the list of
-    (i, j, old_order, new_order)."""
+def repair_ring_bonds(box, max_ring=8, max_changes=4):
+    """Move misplaced double bonds inside one ring so that no neutral ring atom exceeds its valence (a
+    pyrazole the tool wrote as *C1=NN(*)=CC1 becomes *c1ccn(*)n1). One SSSR ring at a time, never across a
+    fused system; only rings drawn with plain single/double bonds; the number of double bonds in the ring is
+    kept; the new assignment must leave every ring atom sp2-like (a double bond in or out of the ring, or a
+    heteroatom lone pair), i.e. the ring reads as an aromatic candidate; the assignment closest to the
+    tool's wins. Nothing changes when no such assignment exists: an azolium or pyridinium drawn without
+    its charge sign stays as read, so the plan's charge step still applies. Edits edges/bonds in place;
+    returns the list of (i, j, old_order, new_order)."""
     import itertools
     symbols, edges = box.get('symbols'), box.get('edges')
     if not isinstance(symbols, list) or not isinstance(edges, list) or len(edges) != len(symbols):
@@ -600,28 +579,37 @@ def repair_ring_bonds(box, max_bonds=20, max_changes=4):
     n = len(symbols)
     order = {1: 1.0, 2: 2.0, 3: 3.0, 4: 1.5, 5: 1.0, 6: 1.0}
     atom = [neutral_atom(s) for s in symbols]
-    valence = [sum(order.get(edges[i][j], 1.0) for j in range(n) if j != i and edges[i][j]) + (atom[i][1] if atom[i] else 0)
-               for i in range(n)]
-    bad = [i for i in range(n) if atom[i] and valence[i] > RING_VALENCE[atom[i][0]] + 1e-6]
+    hetero = [bool(atom[i]) and atom[i][0] in ('N', 'O', 'S', 'P') for i in range(n)]
+
+    def valence(i):
+        return sum(order.get(edges[i][j], 1.0) for j in range(n) if j != i and edges[i][j]) + (atom[i][1] if atom[i] else 0)
+
+    def over_valent():
+        return [i for i in range(n) if atom[i] and valence(i) > RING_VALENCE[atom[i][0]] + 1e-6]
+
+    bad = over_valent()
     if not bad:
         return []
     try:
-        rb = _ring_bond_set(edges)
+        rings = _ring_bonds_per_ring(edges)
     except Exception:
         return []
     changed = []
-    for comp in _bond_components(rb):
-        if not any(i in comp for i in bad):
+    for bonds in rings:
+        members = sorted({a for b in bonds for a in b})
+        if not any(i in members for i in bad) or len(bonds) > max_ring:
             continue
-        bonds = sorted(b for b in rb if b[0] in comp)
-        if len(bonds) > max_bonds or any(edges[a][b] not in (1, 2) for a, b in bonds):
+        if any(edges[a][b] not in (1, 2) for a, b in bonds):
             continue
         k = sum(1 for a, b in bonds if edges[a][b] == 2)
         if k == 0:
             continue
-        incident = {i: [c for c, (a, b) in enumerate(bonds) if i in (a, b)] for i in comp}
-        base = {i: valence[i] - sum(order[edges[bonds[c][0]][bonds[c][1]]] for c in incident[i]) for i in comp}
-        limit = {i: (RING_VALENCE[atom[i][0]] if atom[i] else None) for i in comp}
+        incident = {i: [c for c, (a, b) in enumerate(bonds) if i in (a, b)] for i in members}
+        base = {i: valence(i) - sum(order[edges[bonds[c][0]][bonds[c][1]]] for c in incident[i]) for i in members}
+        # multiple bonds outside this ring (exocyclic C=O, a fused ring's double bond) already make the atom sp2
+        outside_double = {i: any(edges[i][j] in (2, 3) for j in range(n) if j != i and (min(i, j), max(i, j)) not in bonds)
+                          for i in members}
+        limit = {i: (RING_VALENCE[atom[i][0]] if atom[i] else None) for i in members}
         best = None
         for chosen in itertools.combinations(range(len(bonds)), k):
             used = set()
@@ -634,11 +622,12 @@ def repair_ring_bonds(box, max_bonds=20, max_changes=4):
                 used.update((a, b))
             if not ok:
                 continue
-            for i in comp:
-                if limit[i] is None:
-                    continue
-                if base[i] + sum(2.0 if c in chosen else 1.0 for c in incident[i]) > limit[i] + 1e-6:
+            for i in members:
+                if limit[i] is not None and base[i] + sum(2.0 if c in chosen else 1.0 for c in incident[i]) > limit[i] + 1e-6:
                     ok = False
+                    break
+                if not (i in used or outside_double[i] or hetero[i]):
+                    ok = False          # a saturated ring atom would remain: not an aromatic candidate
                     break
             if not ok:
                 continue
@@ -652,6 +641,9 @@ def repair_ring_bonds(box, max_bonds=20, max_changes=4):
             if new != edges[a][b]:
                 changed.append((a, b, edges[a][b], new))
                 edges[a][b] = edges[b][a] = new
+        bad = over_valent()
+        if not bad:
+            break
     if changed and isinstance(box.get('bonds'), list):
         by_ends = {(min(a, b), max(a, b)): new for a, b, _o, new in changed}
         for bd in box['bonds']:
@@ -659,7 +651,6 @@ def repair_ring_bonds(box, max_bonds=20, max_changes=4):
             if ends and len(ends) == 2 and (min(ends), max(ends)) in by_ends:
                 bd['bond_type'] = _BOND_NAME[by_ends[(min(ends), max(ends))]]
     return changed
-
 
 def require(condition, message):
     if not condition:
