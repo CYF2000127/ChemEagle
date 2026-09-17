@@ -4,8 +4,9 @@
 The id-mode agent labels every drawn molecule with [label, text, role]; the tool result gives the reaction template
 (RxnIM) and the drawn products expanded by the R-group back-out. Two figure types need a fixed rule on top of that:
 
-* condition-role override: a molecule the agent calls "conditions" (a catalyst drawn beside the arrow) that RxnIM
-  placed among the reactants is moved to the conditions of the template and of every row;
+* condition-role override: a charged molecule (a catalyst salt) the agent calls "conditions" that RxnIM placed
+  among the reactants is moved to the conditions of the template and of every row; neutral ones stay, they are
+  usually true reactants;
 * catalyst screening: several condition-role molecules that each carry their own outcome ("4, 49% yield, 50% ee")
   or that form a labelled series (N1 ... N7) are one reaction each in the benchmark, not one reaction with
   every catalyst in its conditions.
@@ -36,11 +37,19 @@ def canonical(smiles):
         return smiles
 
 
+def is_charged(smiles):
+    """A salt or ion (a bracket atom with a formal charge): the shape of a drawn catalyst (azolium BF4-, ammonium
+    salt). Neutral reagents the agent also calls "conditions" (NFSI, a diol) are often the figure's reactants."""
+    return bool(re.search(r"\[[^\]]*[+-][^\]]*\]", smiles or ""))
+
+
 def condition_role_smiles(original_molecule_list):
-    """SMILES the agent labelled as a condition (catalyst, reagent, additive drawn as a structure), keyed by
-    canonical form -> the agent's spelling."""
+    """Charged molecules the agent labelled as a condition (catalyst salts), keyed by canonical form -> the
+    agent's spelling. Only these may be moved out of the reactants: on the 2026-09-14 logs the neutral
+    "conditions" that RxnIM placed among the reactants (NFSI in 298-300, the diol in 3c01437) are reactants in
+    the benchmark, the charged one (163's azolium) is a condition."""
     return {canonical(s): s for s, info in (original_molecule_list or {}).items()
-            if isinstance(info, list) and _role_of(info) in CONDITION_ROLES}
+            if isinstance(info, list) and _role_of(info) in CONDITION_ROLES and is_charged(s)}
 
 
 def outcome_text(info):
