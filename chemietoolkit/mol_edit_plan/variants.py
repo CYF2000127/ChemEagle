@@ -24,9 +24,22 @@ def _role_of(info):
     return next((str(x).lower().strip() for x in info if isinstance(x, str) and str(x).lower().strip() in ROLE_WORDS), None)
 
 
+def canonical(smiles):
+    """RDKit canonical form for comparisons (the back-out re-emits reactants through RDKit, so the same
+    molecule can carry two spellings); the raw string when RDKit cannot parse it."""
+    try:
+        from rdkit import Chem, RDLogger
+        RDLogger.DisableLog('rdApp.*')
+        m = Chem.MolFromSmiles(smiles) if isinstance(smiles, str) else None
+        return Chem.MolToSmiles(m) if m is not None else smiles
+    except Exception:
+        return smiles
+
+
 def condition_role_smiles(original_molecule_list):
-    """SMILES the agent labelled as a condition (catalyst, reagent, additive drawn as a structure)."""
-    return {s for s, info in (original_molecule_list or {}).items()
+    """SMILES the agent labelled as a condition (catalyst, reagent, additive drawn as a structure), keyed by
+    canonical form -> the agent's spelling."""
+    return {canonical(s): s for s, info in (original_molecule_list or {}).items()
             if isinstance(info, list) and _role_of(info) in CONDITION_ROLES}
 
 
@@ -56,19 +69,20 @@ def move_condition_molecules(reactions, original_molecule_list):
     moved = set()
     for rx in reactions or []:
         reactants = rx.get('reactants') or []
-        hits = [r for r in reactants if isinstance(r, dict) and r.get('smiles') in cond]
+        hits = [r for r in reactants if isinstance(r, dict) and canonical(r.get('smiles')) in cond]
         if not hits or len(hits) == len(reactants):
             continue
         rx['reactants'] = [r for r in reactants if r not in hits]
         conditions = rx.setdefault('conditions', [])
         for r in hits:
-            if not any(isinstance(c, dict) and c.get('smiles') == r['smiles'] for c in conditions):
-                info = original_molecule_list.get(r['smiles']) or []
-                entry = {'role': 'reagent', 'smiles': r['smiles']}
+            spelling = cond[canonical(r['smiles'])]
+            if not any(isinstance(c, dict) and canonical(c.get('smiles')) == canonical(spelling) for c in conditions):
+                info = original_molecule_list.get(spelling) or []
+                entry = {'role': 'reagent', 'smiles': spelling}
                 if info and isinstance(info[0], str) and info[0].strip():
                     entry['label'] = info[0].strip()
                 conditions.append(entry)
-            moved.add(r['smiles'])
+            moved.add(spelling)
     if moved:
         print(f"[roles] {len(moved)} condition-role molecule(s) moved from reactants to conditions: {sorted(moved)}")
     return moved
