@@ -8,6 +8,7 @@ from rdkit.Chem import rdDepictor
 rdDepictor.SetPreferCoordGen(True)
 from rdkit.Chem.Draw import IPythonConsole
 from rdkit.Chem import AllChem
+import os
 import re
 import copy
 
@@ -287,6 +288,29 @@ def get_sites(tar, ref, ref_site = False):
                     else: sites.append(idx_pair[in_template.index(j.GetIdx())][0])
     return sites
 
+def _relax_carbon_hydrogens(mol):
+    """Drop the explicit-hydrogen count from aliphatic carbons of a template before it becomes a substructure
+    query. The recogniser writes a skeletal CH2 as "[CH]" or "[C@@H]" when it reads a stereo marker that is not
+    there, and such an atom only matches a carbon with exactly one hydrogen, so the template stops matching the
+    drawn products and the whole figure fails to expand (SCI02_01: 16 reactions). Aromatic atoms and
+    heteroatoms keep their hydrogens: "[nH]" is what makes a pyrrole nitrogen neutral."""
+    if mol is None:
+        return mol
+    changed = False
+    for atom in mol.GetAtoms():
+        if atom.GetSymbol() == 'C' and not atom.GetIsAromatic() and (atom.GetNoImplicit() or atom.GetNumExplicitHs() or atom.GetNumRadicalElectrons()):
+            atom.SetNoImplicit(False)
+            atom.SetNumExplicitHs(0)
+            atom.SetNumRadicalElectrons(0)      # "[CH]" parses as a carbene, and a radical never matches a drawn CH2
+            changed = True
+    if changed:
+        try:
+            Chem.SanitizeMol(mol)
+        except Exception:
+            return Chem.MolFromSmiles(Chem.MolToSmiles(mol)) or mol
+    return mol
+
+
 def get_atom_mapping(prod_mol, prod_smiles, r_sites_reversed = None):
     # returns prod_mol_to_query which is the mapping of atom indices in prod_mol to the atom indices of the molecule represented by prod_smiles
     prod_template_intermediate = Chem.MolToSmiles(prod_mol)
@@ -297,8 +321,8 @@ def get_atom_mapping(prod_mol, prod_smiles, r_sites_reversed = None):
             prod_template = prod_template.replace(r, '*')
             prod_template_intermediate = prod_template_intermediate.replace(r, '*')
 
-    prod_template_intermediate_mol = Chem.MolFromSmiles(prod_template_intermediate)
-    prod_template_mol = Chem.MolFromSmiles(prod_template)
+    prod_template_intermediate_mol = _relax_carbon_hydrogens(Chem.MolFromSmiles(prod_template_intermediate))
+    prod_template_mol = _relax_carbon_hydrogens(Chem.MolFromSmiles(prod_template))
     
     p = Chem.AdjustQueryParameters.NoAdjustments()
     p.makeDummiesQueries = True
@@ -348,11 +372,14 @@ def clean_corefs(coref_results_dict, idx):
     toreturn = {}
     for prod in coref_results_dict:
         has_good_label = False
-        for parsed in coref_results_dict[prod]:
+        # an entry may hold a None where the agent had no text for the molecule; one of those used to raise
+        # inside re.search and, through the caller's bare except, cost the figure every row
+        labels = [x for x in (coref_results_dict[prod] or []) if isinstance(x, str)]
+        for parsed in labels:
             if re.search(label_pattern, parsed):
                 has_good_label = True
         if not has_good_label:
-            for parsed in coref_results_dict[prod]:
+            for parsed in labels:
                 if idx+'1' in parsed:
                     coref_results_dict[prod].append(idx+'l')
                 elif idx+'0' in parsed:
@@ -760,6 +787,39 @@ def backout(results, coref_results, molnextr):
     return toreturn
 
 
+def _box_iou(a, b):
+    ix0, iy0 = max(a[0], b[0]), max(a[1], b[1])
+    ix1, iy1 = min(a[2], b[2]), min(a[3], b[3])
+    if ix1 <= ix0 or iy1 <= iy0:
+        return 0.0
+    inter = (ix1 - ix0) * (iy1 - iy0)
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def label_key_by_bbox(product_entry, coref_results, coref_results_dict, threshold=0.5):
+    """The label-map key of the drawn molecule that occupies the product template's box.
+
+    The map is keyed by the molecular agent's SMILES while the template carries the reaction agent's, and the
+    two differ whenever the edit plan expanded that box into variants or corrected a symbol in it. The box is
+    the same drawn rectangle either way, so the overlap finds the entry the SMILES lookup misses; without it
+    the back-out stops at "No Label Parsed" and the figure loses every row."""
+    box = product_entry.get('bbox') if isinstance(product_entry, dict) else None
+    if not box or not coref_results:
+        return None
+    best, best_iou = None, threshold
+    for item in coref_results:
+        for other in item.get('bboxes', []) or []:
+            if 'smiles' not in other or not other.get('bbox'):
+                continue
+            if not isinstance(coref_results_dict.get(other['smiles']), list):
+                continue
+            iou = _box_iou(list(box), list(other['bbox']))
+            if iou > best_iou:
+                best, best_iou = other['smiles'], iou
+    return best
+
+
 def backout_without_coref(results, coref_results, coref_results_dict, coref_smiles_to_graphs, molnextr):
 
     toreturn = []
@@ -775,12 +835,17 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
         
         
         if len(products) == 1:
-            if products[0] not in coref_results_dict:
-                print("Warning: No Label Parsed")
-                return toreturn
-            product_labels = coref_results_dict[products[0]]
+            label_key = products[0]
+            if not isinstance(coref_results_dict.get(label_key), list):
+                label_key = label_key_by_bbox(results[0]['reactions'][0]['products'][0], coref_results, coref_results_dict)
+            # No label for the product template (the detector missed that box, or the plan renamed it): the
+            # drawn products the agent marked with the "product" role are still valid candidates, so carry on
+            # with an empty label and let the substructure match do the filtering.
+            product_labels = coref_results_dict.get(label_key) if isinstance(coref_results_dict.get(label_key), list) else []
+            if not product_labels:
+                print("Warning: No Label Parsed; falling back to the product-role molecules")
             prod = products[0]
-            label_idx = product_labels[0]
+            label_idx = product_labels[0] if product_labels else ''
             '''
             if len(product_labels) == 1:
                 # get the coreference label of the product molecule
@@ -796,7 +861,8 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
         # format the regular expression for labels that correspond to the product label
         numbers = re.findall(r'\d+', label_idx)
         label_idx = numbers[0] if len(numbers) > 0 else ""
-        label_pattern = rf'{re.escape(label_idx)}[a-zA-Z]+'
+        # an empty label must not turn into a pattern that matches every string
+        label_pattern = rf'{re.escape(label_idx)}[a-zA-Z]+' if label_idx else r'(?!x)x'
         
 
         prod_smiles = prod
@@ -937,7 +1003,8 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
 
         #go through all the molecules in the coreference
 
-        clean_corefs(coref_results_dict, label_idx)
+        if label_idx:
+            clean_corefs(coref_results_dict, label_idx)
 
         for other_prod in coref_results_dict:
 
@@ -995,11 +1062,18 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
                                 if not matched:
                                     try:
                                         matched = get_r_group_frags_and_substitute(other_prod_mol, query, reactant_mols, reactant_information, parsed, toreturn)
-                                    except:
-                                        pass
+                                    except Exception:
+                                        if os.environ.get('BACKOUT_DEBUG'):
+                                            import traceback
+                                            print('[backout] substitution failed for %s' % other_prod[:60])
+                                            traceback.print_exc()
 
-    except:
-        pass                          
+    except Exception:
+        # the figure is given up on silently; BACKOUT_DEBUG=1 says why (one mangled template costs every row)
+        if os.environ.get('BACKOUT_DEBUG'):
+            import traceback
+            traceback.print_exc()
+
                             
          
     return toreturn

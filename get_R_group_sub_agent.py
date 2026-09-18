@@ -88,7 +88,9 @@ def _ids_to_smiles(gpt_output, results, tool_name):
         if not smiles:
             dropped.append(key)
             continue
-        out[smiles] = info
+        # the agent leaves the text slot null when a molecule carries none; downstream label handling is
+        # string-only, so drop those here rather than let them reach it
+        out[smiles] = [x for x in info if x is not None] if isinstance(info, list) else info
     print(f"[ids] {len(out)} labelled molecules from {len(by_id)} ids" + (f"; dropped unknown keys {dropped}" if dropped else ""))
     return out
 

@@ -85,10 +85,47 @@ def _aromatize_ring_around(rw, idx: int) -> bool:
     return False
 
 
+_SYNTAX_REPAIRS = (
+    (re.compile(r"\[@@\]"), "[C@@]"),          # a stereo marker that lost its atom: "CCOC(=O)[@@]1(...)"
+    (re.compile(r"\[@\]"), "[C@]"),
+    (re.compile(r"\(R\d*\)"), "(*)"),          # an R label written inline instead of as a site: "C[C@H](R1)C(=O)O"
+    (re.compile(r"\(H\)"), ""),                # hydrogen written as a substituent: "CC[Si](H)(H)CC"
+    (re.compile(r"(?<=\))H(?![a-z])"), ""),     # a trailing "H" after a branch: "O=C(O)H"
+    (re.compile(r"=O=O"), "=O"),                # a carbonyl written twice: "CCC(=O=O)c1ccc(Cl)cc1"
+    (re.compile(r"\[O-\]="), "O="),             # a charged oxygen carrying a double bond
+)
+
+
+def _repair_smiles_syntax(smiles: str):
+    """A parsable rewrite of a SMILES the model or the converter wrote with a token RDKit cannot read, or None.
+
+    These are spelling accidents rather than chemistry: a stereo marker whose atom went missing, an R label
+    left inline, a hydrogen written as a substituent. Each rewrite is applied only when the result parses, so
+    a string that is merely unusual is returned untouched."""
+    if not RDKIT_AVAILABLE or not isinstance(smiles, str) or not smiles:
+        return None
+    for pattern, replacement in _SYNTAX_REPAIRS:
+        if not pattern.search(smiles):
+            continue
+        candidate = pattern.sub(replacement, smiles)
+        if candidate != smiles and Chem.MolFromSmiles(candidate) is not None:
+            return candidate
+    # several accidents in one string: apply every rewrite that matches and check once
+    candidate = smiles
+    for pattern, replacement in _SYNTAX_REPAIRS:
+        candidate = pattern.sub(replacement, candidate)
+    if candidate != smiles and Chem.MolFromSmiles(candidate) is not None:
+        return candidate
+    return None
+
+
 def _repair_unparsable_smiles(smiles: str) -> str:
     """Return a sanitizable repair of an unreadable SMILES, or the input unchanged."""
     if not RDKIT_AVAILABLE or not isinstance(smiles, str) or not smiles:
         return smiles
+    syntactic = _repair_smiles_syntax(smiles)
+    if syntactic is not None:
+        return syntactic
     try:
         bracketed = _bracket_two_letter_elements(smiles)
         if bracketed != smiles and Chem.MolFromSmiles(bracketed) is not None:
