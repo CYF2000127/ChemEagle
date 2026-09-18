@@ -693,6 +693,19 @@ def repair_ring_bonds(box, max_ring=8, max_changes=4):
                 bd['bond_type'] = _BOND_NAME[by_ends[(min(ends), max(ends))]]
     return changed
 
+PRIMES = "'′’´"          # ASCII apostrophe, prime, right single quote, acute accent
+
+
+def unprime(text):
+    """The text with every prime-like mark written as the ASCII apostrophe, so an identifier printed as 2a′
+    still matches the OCR's 2a'."""
+    if not isinstance(text, str):
+        return text
+    for ch in PRIMES[1:]:
+        text = text.replace(ch, "'")
+    return text
+
+
 def require(condition, message):
     if not condition:
         raise PlanError(message, entry=_CURRENT_ENTRY)
@@ -942,9 +955,12 @@ def process(data, plan):
         cooked = []
         for variant in group['variants']:
             cid = variant['compound_id']
-            require(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.\-]*', cid), 'Invalid compound ID')
+            # a printed identifier may carry a prime (2a', 3aa'), in either the ASCII or the typographic form;
+            # rejecting those cost every variant of the figure
+            require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.\-" + PRIMES + r"]*", cid), 'Invalid compound ID')
             require(cid not in compound_ids, f'Duplicate compound ID {cid}')
-            require(re.search(r'(?<![A-Za-z0-9])' + re.escape(cid) + r'(?![A-Za-z0-9])', variant['source_text']), 'Compound ID absent from source_text')
+            require(re.search(r'(?<![A-Za-z0-9])' + re.escape(unprime(cid)) + r'(?![A-Za-z0-9])', unprime(variant['source_text'])),
+                    'Compound ID absent from source_text')
             bindings = {}
             for binding in variant['bindings']:
                 name, value = binding['name'], binding['replacement_symbol']
