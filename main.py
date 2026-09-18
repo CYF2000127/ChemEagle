@@ -19,12 +19,13 @@ from get_text_agent import text_extraction_agent_azure
 from get_reaction_agent import get_reaction_con
 from get_R_group_sub_agent import (process_reaction_image_with_product_variant_R_group,
                                    process_reaction_image_with_table_R_group,
-                                   get_full_reaction_template, get_multi_molecular_full)
+                                   get_full_reaction_template, get_multi_molecular_full,
+                                   peek_cached_multi_molecular)
 from get_observer import action_observer_agent, plan_observer_agent
 from get_text_agent import text_extraction_agent
 import llm_client as llm
 import traceback
-from chemietoolkit.helper import attach_drawn_labelled_structures, _clean_agent_name, _parse_planner_output, _resolve_ordered_agents, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data, propagate_condition_structures_in_data
+from chemietoolkit.helper import attach_drawn_labelled_structures, _clean_agent_name, _parse_planner_output, _resolve_ordered_agents, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data, propagate_condition_structures_in_data, rgroup_fallback_agent
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -242,6 +243,30 @@ def ChemEagle(
             }),
             'tool_call_id': f"agent_call_{idx}",
         })
+
+    # The planner sometimes routes a figure that draws an R-group template to the plain template agents, and
+    # then every row comes back as a copy of that template. When the molecular agent's own output shows a
+    # wildcard, run the R-group agent the plan is missing and let the synthesis use both results.
+    if results:
+        mol_cached = peek_cached_multi_molecular(image_path) or []
+        mol_smiles = [b.get('smiles') for item in mol_cached for b in (item.get('bboxes') or []) if isinstance(b, dict)]
+        fallback_name, fallback_reason = rgroup_fallback_agent(ordered_agents, mol_smiles)
+        if fallback_name:
+            print(f"[dispatch] no R-group agent was planned but {fallback_reason}; running {fallback_name}")
+            try:
+                fallback_result = AGENT_MAP[fallback_name](**_new_agent_args(fallback_name))
+            except Exception as exc:
+                failed_agents.append(f"{fallback_name} (fallback): {type(exc).__name__}: {exc}")
+                print(f"[dispatch] fallback agent {fallback_name} failed, continuing without it: {exc!r}")
+                traceback.print_exc()
+            else:
+                idx = len(execution_logs)
+                execution_logs.append({"id": f"agent_call_{idx}", "name": fallback_name,
+                                       "arguments": {"image_path": image_path}, "result": fallback_result})
+                results.append({'role': 'tool', 'name': fallback_name,
+                                'content': json.dumps({'image_path': image_path, fallback_name: fallback_result}),
+                                'tool_call_id': f"agent_call_{idx}"})
+                observer_notes.append(f"{fallback_name} was run although the plan omitted it: {fallback_reason}")
 
     print(f'[dispatch] results: {results}')
 

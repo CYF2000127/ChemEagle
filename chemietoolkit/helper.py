@@ -1346,6 +1346,30 @@ def _attach_drawn_labels(node, label_map):
             _attach_drawn_labels(value, label_map)
 
 
+R_GROUP_AGENTS = ("process_reaction_image_with_product_variant_R_group", "process_reaction_image_with_table_R_group")
+
+
+def rgroup_fallback_agent(ordered_agents, molecule_smiles, drawn_threshold=5):
+    """The R-group agent to run although the planner did not ask for one, or None.
+
+    A figure whose drawing carries an R site needs its substituents resolved from somewhere: the drawn product
+    variants (the product-variant agent) or a substituent table (the table agent). When the planner routes such
+    a figure to the plain template agents instead, every row of the figure comes back as a copy of the template
+    and the whole figure is lost. The signal is the molecular agent's own output: a molecule with a wildcard
+    means a template is drawn, and the number of fully resolved molecules says whether the variants are drawn
+    (a scope scheme) or listed as text (a table).
+    """
+    if any(name in ordered_agents for name in R_GROUP_AGENTS):
+        return None, ""
+    smiles = [s for s in (molecule_smiles or []) if isinstance(s, str) and s]
+    if not any("*" in s for s in smiles):
+        return None, ""
+    resolved = sum(1 for s in smiles if "*" not in s)
+    if resolved >= drawn_threshold:
+        return R_GROUP_AGENTS[0], ("the figure draws a template and %d resolved molecules, so the variants are drawn" % resolved)
+    return R_GROUP_AGENTS[1], ("the figure draws a template and only %d resolved molecules, so the variants are listed as text" % resolved)
+
+
 def propagate_condition_structures_in_data(data):
     """Share drawn catalyst / labelled reagent structures across the reactions of one figure (in place)."""
     if isinstance(data, dict):

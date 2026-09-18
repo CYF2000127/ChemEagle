@@ -1873,6 +1873,12 @@ def get_cached_multi_molecular(image_path: str):
     return _process_multi_molecular_cache[key]
 
 
+def peek_cached_multi_molecular(image_path: str):
+    """The molecular agent's result if it has already run for this image and model, else None. Used by the
+    dispatcher to look at what the figure holds without paying for a run of its own."""
+    return _process_multi_molecular_cache.get((image_path, llm.resolve_model()))
+
+
 def get_cached_raw_results(image_path: str):
     """Run get_reaction_withatoms_correctR once per (image_path, model) and
     cache the result."""
