@@ -133,7 +133,43 @@ def _template_catalog(image_path, tool_result):
     return catalog, id_map
 
 
-def _apply_table_plan(input1, plan, id_map):
+def _variant_bindings(image_path):
+    """{compound_id: {variable: printed value}} from the molecular agent's own expansion of the drawn list.
+
+    A table often prints one column per variable of the template and names the rest by compound id ("7 (X, Y)"
+    over the scheme, 7a .. 7g listed beside it, and the table column "7" holding 7a). The row then carries no
+    value for X and Y, while the molecular agent read them off the drawn list; this is where the table agent
+    picks them up."""
+    try:
+        item = get_cached_multi_molecular(image_path)[0]
+        rows = (item.get('edit_plan') or {}).get('provenance') or []
+    except Exception as exc:
+        print(f"[table] variant bindings unavailable: {type(exc).__name__}: {exc}")
+        return {}
+    out = {}
+    for row in rows:
+        cid = row.get('compound_id')
+        if not cid:
+            continue
+        out.setdefault(str(cid), {}).update({b['name']: b['literal_value'] for b in row.get('bindings') or []
+                                             if isinstance(b, dict) and b.get('name') and b.get('literal_value')})
+    return {k: v for k, v in out.items() if v}
+
+
+def _row_compound_ids(row):
+    """The compound ids a table row names: its own id and every short value of its additional_info columns."""
+    out = []
+    for key in ('compound_id', 'label'):
+        if isinstance(row.get(key), str):
+            out.append(row[key].strip())
+    info = row.get('additional_info')
+    for item in (info if isinstance(info, list) else [info]):
+        if isinstance(item, dict):
+            out.extend(str(v).strip() for v in item.values() if isinstance(v, str) and 0 < len(v.strip()) <= 12)
+    return [x for x in dict.fromkeys(out) if x]
+
+
+def _apply_table_plan(input1, plan, id_map, variants=None):
     """Build the table agent's reactions from the model's plan: reaction 0_1 is the template with the
     validated OCR corrections applied; every row clones the template, substitutes its variables by the
     row's printed values and regenerates the SMILES. Same output shape as the symbol-rewriting path."""
@@ -201,16 +237,24 @@ def _apply_table_plan(input1, plan, id_map):
     template_conditions = [{'text': c.get('text')} for c in input1.get('conditions', []) or [] if isinstance(c, dict) and c.get('text')]
     reactions = [{'reaction_id': '0_1', 'note': 'Corrected Template', 'reactants': molecules('reactants', {}, '0_1'),
                   'conditions': template_conditions, 'products': molecules('products', {}, '0_1'), 'additional_info': []}]
+    filled = 0
     for n, row in enumerate(plan.get('rows') or [], start=1):
         if not isinstance(row, dict):
             continue
         rid = str(row.get('reaction_id') or f'{n}_1')
-        bindings = row.get('bindings') if isinstance(row.get('bindings'), dict) else {}
+        bindings = dict(row.get('bindings')) if isinstance(row.get('bindings'), dict) else {}
+        for cid in (_row_compound_ids(row) if variants else []):
+            for name, value in (variants.get(cid) or {}).items():
+                if name not in bindings:
+                    bindings[name] = value
+                    filled += 1
+                    print(f"[table] row {rid}: {name} = {value} taken from the drawn compound {cid}")
         reactions.append({'reaction_id': rid, 'reactants': molecules('reactants', bindings, rid),
                           'conditions': row.get('conditions') or template_conditions,
                           'products': molecules('products', bindings, rid),
                           'additional_info': row.get('additional_info') or []})
-    print(f"[table] {len(reactions) - 1} rows built from the plan, {len(corrections)} template correction(s) applied")
+    print(f"[table] {len(reactions) - 1} rows built from the plan, {len(corrections)} template correction(s) applied"
+          + (f", {filled} value(s) taken from drawn compounds" if filled else ""))
     return {'reactions': reactions}
 import sys
 from rxnim import RxnIM
@@ -2688,7 +2732,7 @@ def process_reaction_image_with_table_R_group(
         print(f"DEBUG [agent]: input2 is not a dict, value: {input2}")
     
     if table_id_map is not None:
-        updated_input = _apply_table_plan(input1, input2, table_id_map)
+        updated_input = _apply_table_plan(input1, input2, table_id_map, _variant_bindings(image_path))
     else:
         updated_input = replace_symbols_and_generate_smiles(input1, input2)
     print(f"txt_R_group_agent_output:{updated_input}")

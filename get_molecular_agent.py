@@ -1405,7 +1405,9 @@ def _merge_plan_output(plan_out, full_item):
     merged = copy.deepcopy(full_item)
     merged['bboxes'] = new_boxes
     merged['corefs'] = [list(c) for c in plan_out['corefs']]
-    merged['edit_plan'] = {k: plan_out['postprocess'][k] for k in ('status', 'decisions', 'structure_warnings', 'audit')}
+    # provenance rides along: it is what the variants of an expansion group were bound to, and the table agent
+    # reads it when a row names a drawn compound ("7": "7a") without printing that compound's own values
+    merged['edit_plan'] = {k: plan_out['postprocess'][k] for k in ('status', 'decisions', 'structure_warnings', 'audit', 'provenance')}
     merged['extracted_explicit_rgroup_equations'] = plan_out['extracted_explicit_rgroup_equations(without any reasoning and infer)']
     return merged
 
