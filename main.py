@@ -20,7 +20,7 @@ from get_reaction_agent import get_reaction_con
 from get_R_group_sub_agent import (process_reaction_image_with_product_variant_R_group,
                                    process_reaction_image_with_table_R_group,
                                    get_full_reaction_template, get_multi_molecular_full,
-                                   peek_cached_multi_molecular)
+                                   peek_cached_multi_molecular, drawn_condition_structures)
 from get_observer import action_observer_agent, plan_observer_agent
 from get_text_agent import text_extraction_agent
 import llm_client as llm
@@ -372,7 +372,7 @@ def ChemEagle(
     gpt_output = fallback_resolve_condition_smiles_in_data(gpt_output)
     gpt_output = fallback_resolve_reactant_product_smiles_in_data(gpt_output)
     gpt_output = attach_drawn_labelled_structures(gpt_output, get_molecular_agent.label_structures(image_path))   # a condition naming a drawn compound ("B (10 mol%)") takes that drawing, not a name lookup
-    gpt_output = propagate_condition_structures_in_data(gpt_output)   # drawn catalysts and labelled reagents shared across the figure's reactions
+    gpt_output = propagate_condition_structures_in_data(gpt_output, drawn_condition_structures(image_path))   # drawn catalysts and labelled reagents shared across the figure's reactions, and the one structure drawn beside the arrow
 
     if text_extraction_result is not None:
         if isinstance(text_extraction_result, dict) and "annotated_text" in text_extraction_result:

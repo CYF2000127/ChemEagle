@@ -1370,21 +1370,68 @@ def rgroup_fallback_agent(ordered_agents, molecule_smiles, drawn_threshold=5):
     return R_GROUP_AGENTS[1], ("the figure draws a template and only %d resolved molecules, so the variants are listed as text" % resolved)
 
 
-def propagate_condition_structures_in_data(data):
+def _canonical_or_none(smiles):
+    try:
+        from rdkit import Chem, RDLogger
+        RDLogger.DisableLog('rdApp.*')
+    except Exception:
+        return None
+    mol = Chem.MolFromSmiles(smiles) if isinstance(smiles, str) and smiles else None
+    if mol is None:
+        return None
+    try:
+        return Chem.MolToSmiles(mol)
+    except Exception:
+        return None
+
+
+def _propagate_drawn_condition(rows, drawn):
+    """The one structure a figure draws beside its arrow belongs to all of its reactions.
+
+    A scheme that draws a single molecule in the condition region (an oxidant, an NHC precatalyst) means it for
+    every row, but the agents write it into the row they read it on and leave the others without it. It is added
+    to the rows that carry it neither as a condition nor as a reactant or product. A figure that draws several
+    condition molecules is a screening set, where each row picks its own, so nothing is shared there.
+    """
+    canon = [c for c in (_canonical_or_none(s) for s in drawn or []) if c]
+    if len(set(canon)) != 1:
+        return 0
+    target = canon[0]
+    source = next((c for row in rows for c in row['conditions']
+                   if isinstance(c, dict) and _canonical_or_none(c.get('smiles')) == target), None)
+    added = 0
+    for row in rows:
+        present = {_canonical_or_none(c.get('smiles')) for c in row['conditions'] if isinstance(c, dict)}
+        for key in ('reactants', 'products'):
+            present |= {_canonical_or_none(m.get('smiles')) for m in (row.get(key) or []) if isinstance(m, dict)}
+        if target in present:
+            continue
+        item = _copy.deepcopy(source) if source else {'role': 'reagent', 'text': 'drawn beside the arrow', 'smiles': target}
+        item['smiles_source'] = 'drawn beside the arrow in this figure'
+        row['conditions'] = [item] + row['conditions']
+        added += 1
+    if added:
+        print(f"[condition propagation] the drawn condition structure was added to {added} reaction(s)")
+    return added
+
+
+def propagate_condition_structures_in_data(data, drawn=None):
     """Share drawn catalyst / labelled reagent structures across the reactions of one figure (in place)."""
     if isinstance(data, dict):
         for value in data.values():
-            propagate_condition_structures_in_data(value)
+            propagate_condition_structures_in_data(value, drawn)
     elif isinstance(data, list):
         rows = [it for it in data if isinstance(it, dict) and isinstance(it.get('conditions'), list)]
         if len(rows) >= 2:
             try:
                 _fill_condition_structures_by_name(rows)
                 _propagate_catalyst_entries(rows)
+                if drawn:
+                    _propagate_drawn_condition(rows, drawn)
             except Exception as exc:
                 print(f"[condition propagation] skipped: {exc}")
         for it in data:
-            propagate_condition_structures_in_data(it)
+            propagate_condition_structures_in_data(it, drawn)
     return data
 
 

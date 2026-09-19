@@ -133,6 +133,27 @@ def _template_catalog(image_path, tool_result):
     return catalog, id_map
 
 
+def drawn_condition_structures(image_path):
+    """SMILES of the molecules the vision pass found beside the arrow, in the condition region of the figure.
+
+    These are drawn once for the whole scheme (an oxidant, an NHC precatalyst), while the agents write them
+    into the row they happened to read them on. The caller shares them across the figure's reactions."""
+    out = []
+    try:
+        raw = get_cached_raw_results(image_path) or []
+    except Exception as exc:
+        print(f"[drawn conditions] unavailable: {type(exc).__name__}: {exc}")
+        return out
+    for rxn in raw:
+        if not isinstance(rxn, dict):
+            continue
+        for entry in rxn.get('conditions', []) or []:
+            smiles = entry.get('smiles') if isinstance(entry, dict) else None
+            if isinstance(smiles, str) and smiles and smiles != '*' and '*' not in smiles:
+                out.append(smiles)
+    return list(dict.fromkeys(out))
+
+
 def _variant_bindings(image_path):
     """{compound_id: {variable: printed value}} from the molecular agent's own expansion of the drawn list.
 
