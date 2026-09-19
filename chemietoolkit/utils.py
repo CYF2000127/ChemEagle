@@ -35,6 +35,15 @@ RGROUP_SYMBOLS = RGROUP_SYMBOLS + [f'[{i}]' for i in RGROUP_SYMBOLS]
 BACKOUT_COMPOSITE_SITES = False
 
 
+def _norm_r_symbol(sym):
+    """The spelling the back-out compares R groups in: [R1] and [1*] both read as [1*]."""
+    if isinstance(sym, str) and len(sym) > 2 and sym[0] == '[' and sym[-1] == ']':
+        inner = sym[1:-1]
+        if inner[:1] == 'R' and inner[1:].isdigit():
+            return f'[{inner[1:]}*]'
+    return sym
+
+
 def _numbered_dummy_sites(smiles, skip_indices=()):
     """{atom index: '[n*]'} for isotope-numbered dummy atoms with exactly one neighbour."""
     mol = Chem.MolFromSmiles(smiles) if isinstance(smiles, str) else None
@@ -905,10 +914,28 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
             extra_query_sites = _numbered_dummy_sites(prod_smiles, skip_indices=covered)
             num_r_groups += len(extra_query_sites)
         r_site_names = set(r_sites) | set(extra_query_sites.values())
-        
+
+        # A reactant whose R group lost its number (drawn R1, read as a plain R) cannot be placed by name. When
+        # exactly one R site of the product template sits on no reactant and exactly one reactant carries an
+        # unnumbered placeholder, the two are the same group: the drawn scheme has nowhere else to put either.
+        orphan_site, unnumbered_at = None, set()
+        _numbered_on_reactants, _unnumbered = set(), []
+        for _ridx, _reactant in enumerate(reactants):
+            for _aidx, _atom in enumerate(_reactant.get('atoms') or []):
+                _sym = _norm_r_symbol(_atom.get('atom_symbol'))
+                if _sym in r_site_names:
+                    _numbered_on_reactants.add(_sym)
+                elif _sym in ('*', '[*]', '[R]'):
+                    _unnumbered.append((_ridx, _aidx))
+        _missing = [s for s in sorted(r_site_names - _numbered_on_reactants) if re.fullmatch(r'\[\d+\*\]', s)]
+        if len(_missing) == 1 and len(_unnumbered) == 1:
+            orphan_site, unnumbered_at = _missing[0], set(_unnumbered)
+            print(f"[backout] the unnumbered placeholder of reactant {_unnumbered[0][0]} reads as {orphan_site}: "
+                  f"no reactant carries it and the product template does")
+
         reactant_mols = []
-        
-        
+
+
         #--------------process the reactants-----------------
         
         reactant_information = {} #index of relevant reaction --> [[R group name, atom index of R group, atom index of R group connection], ...]
@@ -933,10 +960,12 @@ def backout_without_coref(results, coref_results, coref_results_dict, coref_smil
                     if sym[0] == 'R' and sym[1:].isdigit():
                         sym = sym[1:]+"*"
                     sym = f'[{sym}]'
+                if orphan_site is not None and (idx, a_idx) in unnumbered_at and sym not in r_site_names:
+                    sym = orphan_site      # the placeholder that lost its number, recovered above
                 if sym in r_site_names:
                     if reactant_mols[-1].GetNumAtoms()==1:
                         reactant_information[idx].append([sym, -1, -1])
-                    else: 
+                    else:
                         has_r = True
                         reactant_mols[-1] = Chem.MolFromMolBlock(reactant['molfile'])
                         reactant_information[idx].append([sym, a_idx-h_counter, [i.GetIdx() for i in reactant_mols[-1].GetAtomWithIdx(a_idx-h_counter).GetNeighbors()][0]])
