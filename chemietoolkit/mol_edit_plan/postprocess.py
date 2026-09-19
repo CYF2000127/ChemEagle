@@ -96,6 +96,10 @@ ATOMIC = re.compile(r'\[(?:\d+)?([A-Z][a-z]?|[bcnops])(?:H\d*)?(?:[+\-]\d*|\+\+|
 # vision tool itself uses rare elements (Lv, Lu, Nd, Yb, At, Fm, Er) as placeholder atoms.
 COMMON_ELEMENTS = set('H B C N O F Si P S Cl Br I Se Te Sn Ge Li Na K Mg Ca Zn Cu Pd Pt Ni Co Fe Ru Rh Ir Au Ag Al Ti Zr Hf Mn Cr Mo W Hg Pb Bi Sb As Ga In Tl Cs Rb Ba Sr Sc La Ce Sm Eu Gd Yb Lu Os V Nb Ta Cd'.split())
 RARE_ELEMENTS = ELEMENTS - COMMON_ELEMENTS
+# Common elements a drawn placeholder is still misread as: the metals. A terminal one may be corrected back to
+# a placeholder the scheme draws elsewhere (R1 read as [Ti] or [Li]). Hydrogen, the halogens and the elements
+# that carry substituents in their own right (B, Si, Sn, Ge, P, S, Se) are never touched: they are drawn atoms.
+MISREAD_METALS = COMMON_ELEMENTS - set('H B C N O F Si P S Cl Br I Se Te Sn Ge'.split())
 CHARGED = re.compile(r"\[[A-Za-z][A-Za-z0-9]*[+\-]\d?\]$")          # [N+] [Cl-] [BF4-] [S+]
 BARE_ATOM = re.compile(r"(?:[A-Z][a-z]?|\*|\[\d+\*\])$")             # C, N, Cl, *, [2*]
 CHARGE_BEARERS = {'N', 'P', 'S', 'O'}
@@ -846,9 +850,10 @@ def process(data, plan):
             require(LABEL.fullmatch(dst) and editable(dst), 'lookalike target must be a bracketed label')
             if m2.group(1) not in RARE_ELEMENTS:
                 # A common element is structural data: Li, Ti, B and Si do occur as drawn atoms. It is still a
-                # misread placeholder when it sits on a terminal atom and is corrected to a placeholder the
+                # misread placeholder when it is a metal on a terminal atom and is corrected to a placeholder the
                 # figure draws on another molecule but not on this one (R1 read as [Ti] on one side of a scheme
                 # whose other side carries R1). Everything else keeps the element.
+                require(m2.group(1) in MISREAD_METALS, 'only a metal token is a lookalike among the common elements; H, halogens, B, Si, Sn, P, S stay')
                 require(VARIABLE.fullmatch(dst), 'a common element is only corrected to a placeholder such as [R1] or [Ar]')
                 require(degs is not None and degs[j] <= 1, 'a common element is only corrected on a terminal atom')
                 require(dst in placeholders_elsewhere(i), f'{dst} is drawn on no other molecule of this figure')
