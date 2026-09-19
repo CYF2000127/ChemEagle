@@ -349,6 +349,21 @@ def row_defines(row, name, literal):
     return False
 
 
+def row_defines_positional(row, compound_id, names, name, literal):
+    """Does the printed row assign `literal` to `name` by position rather than by equation? A figure that heads
+    its list with the variables in order ("7 (X, Y)") writes each member as values in that same order
+    ("7a (Me, H)"): the k-th value belongs to the k-th variable. `names` is the group's variable order."""
+    if name not in names:
+        return False
+    m = re.search(r'(?<![A-Za-z0-9])' + re.escape(unprime(str(compound_id))) + r'\s*\(([^()]*)\)', unprime(row))
+    if m is None:
+        return False
+    values = [v.strip() for v in m.group(1).split(',')]
+    if len(values) != len(names):
+        return False
+    return clean(values[names.index(name)]) == clean(literal)
+
+
 def literal_matches(literal, value, audit, **context):
     """Transcription only: the replacement token must be the printed right-hand side
     itself (spaces, TeX braces and Unicode digits normalised). No abbreviation,
@@ -720,7 +735,16 @@ def process(data, plan):
     source = unwrap(data)
     cat, mols, texts, atoms = catalog(source)
     edited = copy.deepcopy(source['bboxes'])
-    audit, touched = [], set()
+    audit, touched, applied = [], set(), {}
+
+    def placeholders_elsewhere(i):
+        """Placeholder tokens the figure draws on its other molecules ([R1], [Ar2] ...)."""
+        out = set()
+        for k, box in enumerate(edited):
+            if k == i or box.get('category') != '[Mol]':
+                continue
+            out.update(s for s in box.get('symbols', []) or [] if isinstance(s, str) and VARIABLE.fullmatch(s))
+        return out
 
     def atom(mid, aid):
         require(mid in mols, f'Unknown molecule {mid}')
@@ -753,13 +777,19 @@ def process(data, plan):
                     audit.append({'operation': 'reroute_ocr_to_atom_correction', **patch, 'kind': kind})
                     continue
         i, j = atom(patch['molecule_id'], patch['atom_id'])
-        require((i, j) not in touched, f'Duplicate OCR correction at {i}:{j}')
-        require(edited[i]['symbols'][j] == patch['expected_symbol'], 'OCR expected_symbol mismatch')
         value = patch['corrected_symbol']
+        if (i, j) in touched:
+            # the same atom filed twice, usually once per section: a repeat of what is already applied is
+            # dropped, a second and different value is a real conflict
+            require(applied.get((i, j)) == value, f'Conflicting corrections at {i}:{j}')
+            audit.append({'operation': 'duplicate_correction_dropped', **patch})
+            continue
+        require(edited[i]['symbols'][j] == patch['expected_symbol'], 'OCR expected_symbol mismatch')
         require(LABEL.fullmatch(value) and editable(value), 'Only bracketed label OCR corrections are allowed')
         require(value != patch['expected_symbol'], 'No-op OCR correction')
         edited[i]['symbols'][j] = value
         touched.add((i, j))
+        applied[(i, j)] = value
         audit.append({'operation': 'ocr', **patch, 'source_bbox_index': i, 'symbol_index': j})
 
     # 1b. Atom-level OCR: three mechanically checkable kinds, never an element change
@@ -774,11 +804,25 @@ def process(data, plan):
         i = mols[mid]['source_bbox_index']
         require(m is not None and int(m.group(1)) < len(edited[i]['symbols']), f'Unknown atom {aid}')
         j = int(m.group(1))
-        require((i, j) not in touched, f'Duplicate correction at {i}:{j}')
         src, dst = patch['expected_symbol'], patch['corrected_symbol']
+        if (i, j) in touched:
+            require(applied.get((i, j)) == dst, f'Conflicting corrections at {i}:{j}')
+            audit.append({'operation': 'duplicate_correction_dropped', **patch})
+            continue
         require(edited[i]['symbols'][j] == src, 'atom correction expected_symbol mismatch')
         require(dst != src, 'No-op atom correction')
         degs = degrees(source['bboxes'][i])
+        if editable(src) and kind != 'charge':
+            # a label atom filed under atom_corrections: its symbol is not an element, so this is the plain
+            # OCR correction of step 1 whatever kind the model picked ([P2] -> [R2], [Rl] -> [R1], [3*] -> [R3])
+            require(LABEL.fullmatch(dst) and editable(dst), 'Only bracketed label OCR corrections are allowed')
+            edited[i]['symbols'][j] = dst
+            touched.add((i, j))
+            applied[(i, j)] = dst
+            atoms[aid] = (i, j)
+            audit.append({'operation': 'ocr', **{k: v for k, v in patch.items() if k != 'kind'},
+                          'source_bbox_index': i, 'symbol_index': j, 'filed_as': kind})
+            continue
         if kind == 'charge':
             model_charged.add(mid)
             require(CHARGED.fullmatch(dst), 'charge correction must produce a charged element token such as [N+], [Cl-], [BF4-]')
@@ -798,10 +842,19 @@ def process(data, plan):
             require(degs is not None and degs[j] <= 1, 'label_from_atom only on a terminal atom (a collapsed text label has one bond)')
         else:  # lookalike
             m2 = re.fullmatch(r'\[([A-Z][a-z]?)\]', src)
-            require(m2 is not None and m2.group(1) in RARE_ELEMENTS, 'lookalike source must be a bracketed rare-element token such as [Re], [Pr], [Pa]')
+            require(m2 is not None, 'lookalike source must be a bracketed element token such as [Re], [Pr], [Ti]')
             require(LABEL.fullmatch(dst) and editable(dst), 'lookalike target must be a bracketed label')
+            if m2.group(1) not in RARE_ELEMENTS:
+                # A common element is structural data: Li, Ti, B and Si do occur as drawn atoms. It is still a
+                # misread placeholder when it sits on a terminal atom and is corrected to a placeholder the
+                # figure draws on another molecule but not on this one (R1 read as [Ti] on one side of a scheme
+                # whose other side carries R1). Everything else keeps the element.
+                require(VARIABLE.fullmatch(dst), 'a common element is only corrected to a placeholder such as [R1] or [Ar]')
+                require(degs is not None and degs[j] <= 1, 'a common element is only corrected on a terminal atom')
+                require(dst in placeholders_elsewhere(i), f'{dst} is drawn on no other molecule of this figure')
         edited[i]['symbols'][j] = dst
         touched.add((i, j))
+        applied[(i, j)] = dst
         if editable(dst):
             atoms[aid] = (i, j)      # a recovered label / placeholder can now be defined or expanded
         audit.append({'operation': 'atom_ocr', **patch, 'source_bbox_index': i, 'symbol_index': j})
@@ -938,6 +991,9 @@ def process(data, plan):
         # An atom is either the variable itself ([R]) or a composite label that embeds it ([OR]);
         # composite atoms get each row's value spliced in below.
         positions, used_atoms, composite_at = {}, set(), {}
+        # the order the model lists the variables in is the order the figure's header prints them
+        # ("7 (X, Y)"), which is what a row written as "7a (Me, H)" assigns by position
+        declared = list(dict.fromkeys(v['name'] for v in group['variables']))
         for variable in group['variables']:
             i, j = atom(mid, variable['atom_id'])
             name = variable['name']
@@ -973,7 +1029,9 @@ def process(data, plan):
                 require(literal_matches(binding['literal_value'], value, audit, compound_id=cid, name=name), 'replacement_symbol must be the printed value verbatim')
                 # Mechanical corroboration, not a substitute for visual verification.
                 literal = binding['literal_value']
-                require(row_defines(variant['source_text'], name, literal), 'Binding lacks explicit equation in source_text')
+                require(row_defines(variant['source_text'], name, literal)
+                        or row_defines_positional(variant['source_text'], cid, declared, name, literal),
+                        'Binding lacks explicit equation in source_text')
                 bindings[name] = value
                 equations.append(f'{cid}: {name} = {literal}')
             require(set(bindings) == set(positions), 'Every variant must bind all local variables once')
