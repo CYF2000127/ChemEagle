@@ -25,7 +25,7 @@ from get_observer import action_observer_agent, plan_observer_agent
 from get_text_agent import text_extraction_agent
 import llm_client as llm
 import traceback
-from chemietoolkit.helper import attach_drawn_labelled_structures, _clean_agent_name, _parse_planner_output, _resolve_ordered_agents, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data, propagate_condition_structures_in_data, rgroup_fallback_agent
+from chemietoolkit.helper import attach_drawn_labelled_structures, _clean_agent_name, _parse_planner_output, _resolve_ordered_agents, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data, propagate_condition_structures_in_data, rgroup_fallback_agent, set_network_enabled, network_enabled
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -77,6 +77,7 @@ def ChemEagle(
     api_key: Optional[str] = None,
     use_plan_observer: bool = False,
     use_action_observer: bool = False,
+    use_network: Optional[bool] = None,
     artifacts: Optional[dict] = None,
 ) -> dict:
     """ChemEagle over any OpenAI-compatible endpoint (replaces the deprecated
@@ -91,9 +92,21 @@ def ChemEagle(
         base_url: API base URL (default: BASE_URL env, else https://api.openai.com/v1).
         api_key: API key (default: API_KEY env).
         use_plan_observer / use_action_observer: as in ChemEagle.
+        use_network: whether a condition or reagent named in words may be looked up
+            over the network (PubChem, OPSIN, the OCSR resolver). True asks the
+            services, False leaves the alias map, the cached names and the local
+            OPSIN jar to answer alone, which costs no waiting; None (default) keeps
+            whatever the CHEMEAGLE_NETWORK / CHEMEAGLE_OFFLINE environment says,
+            and the network is on when neither is set. Structures the figure draws
+            are read by the recogniser and never depend on this.
         artifacts: optional dict that receives the planner output, the executed agents
             with their results, failures and the raw final reply, for evaluation.
     """
+
+    if use_network is not None:
+        set_network_enabled(use_network)
+    if not network_enabled():
+        print("[network] off: names resolve from the alias map, the cache and local OPSIN only")
 
     model_name = llm.resolve_model(model_name)
 

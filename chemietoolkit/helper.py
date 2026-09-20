@@ -245,6 +245,66 @@ class _ServiceUnavailable(Exception):
 _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
+# ---------------------------------------------------------------------------
+# Network switch. Name lookups are the only step of the pipeline that leaves
+# the machine, and a name no service knows costs seconds of waiting, so a run
+# that does not need them should be able to say so. Turned off, the alias map,
+# the persistent cache and the local OPSIN jar answer on their own.
+#
+# The setting is read from the environment at import (CHEMEAGLE_NETWORK=0, or
+# CHEMEAGLE_OFFLINE=1) and can be changed at runtime with set_network_enabled,
+# which is what ChemEagle()'s use_network argument calls.
+# ---------------------------------------------------------------------------
+_TRUE_WORDS = frozenset({'1', 'true', 'yes', 'on'})
+_FALSE_WORDS = frozenset({'0', 'false', 'no', 'off'})
+
+
+def _env_flag(name: str) -> Optional[bool]:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    word = raw.strip().lower()
+    if word in _TRUE_WORDS:
+        return True
+    if word in _FALSE_WORDS:
+        return False
+    return None
+
+
+def _network_default() -> bool:
+    flag = _env_flag('CHEMEAGLE_NETWORK')
+    if flag is None:
+        offline = _env_flag('CHEMEAGLE_OFFLINE')
+        flag = None if offline is None else not offline
+    return True if flag is None else flag
+
+
+NETWORK_ENABLED = _network_default()
+
+
+def network_enabled() -> bool:
+    """Whether name lookups may leave the machine."""
+    return NETWORK_ENABLED
+
+
+def set_network_enabled(enabled: bool) -> bool:
+    """Turn name lookups over the network on or off; returns the setting that
+    was in force before, so a caller can put it back.
+
+    The environment variable is set as well, because the OCSR resolver lives in
+    another package and reads the setting from there rather than importing this
+    module back.
+    """
+    global NETWORK_ENABLED
+    previous = NETWORK_ENABLED
+    NETWORK_ENABLED = bool(enabled)
+    os.environ['CHEMEAGLE_NETWORK'] = '1' if NETWORK_ENABLED else '0'
+    os.environ.pop('CHEMEAGLE_OFFLINE', None)
+    if previous != NETWORK_ENABLED:
+        print('[network] name lookups %s' % ('on' if NETWORK_ENABLED else
+                                             'off: alias map, cache and local OPSIN only'))
+    return previous
+
 
 def _get_json_with_retry(url: str, timeout: float = 5.0,
                          attempts: int = 3, base_delay: float = 1.0) -> Any:
@@ -270,6 +330,12 @@ def _get_json_with_retry(url: str, timeout: float = 5.0,
     raise _ServiceUnavailable(str(last))
 
 _PUBCHEM_SMILES_CACHE: Dict[str, Optional[str]] = {}
+
+# Names recorded as a miss that this process has already re-asked about. A recorded miss means every
+# service answered and none knew the name, so it is worth one retry per run (a database gains entries)
+# but not one per reaction the name appears in: 24 conditions reading '10 mol% PLP' cost 24 chains of
+# web requests, each of them seconds long, for the same settled answer.
+_RETRIED_MISSES: set = set()
 
 # ---------------------------------------------------------------------------
 # Persistent cache (survives process restarts).
@@ -644,6 +710,10 @@ def _query_pubchem_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
         cached = _PUBCHEM_SMILES_CACHE[key]
         print(f"[PubChem cache] hit: '{key}' -> {cached!r}")
         return cached
+    if not NETWORK_ENABLED:
+        # Nothing is cached here: the name was never asked about, so it stays
+        # an open question rather than becoming a recorded miss.
+        return None
     encoded = _urlparse.quote(name.strip(), safe='')
     try:
         # 1) name -> CID(s)
@@ -766,6 +836,8 @@ def _query_opsin_smiles(name: str, timeout: float = 5.0) -> Optional[str]:
     s = name.strip()
     if not s or len(s) > 200:
         return None
+    if not NETWORK_ENABLED:
+        return _local_opsin_smiles(s)
     enc = _urlparse.quote(s, safe='')
     url = f"https://opsin.ch.cam.ac.uk/opsin/{enc}.smi"
     try:
@@ -856,8 +928,9 @@ def _resolve_name_to_smiles(name: str,
         if cached is not None:
             print(f"[name->SMILES cache] hit: '{key}' -> {cached!r}")
             return cached
-        if offline:
+        if offline or not NETWORK_ENABLED or key in _RETRIED_MISSES:
             return None
+        _RETRIED_MISSES.add(key)
         print(f"[name->SMILES cache] retry negative for '{key}'")
         smi = None
     elif offline:

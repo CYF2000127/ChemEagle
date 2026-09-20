@@ -227,6 +227,20 @@ def _shorthand_candidates(token: str) -> List[str]:
     return cands
 
 # ========== Main interface ==========
+def _network_enabled() -> bool:
+    """Whether name lookups may leave the machine. The setting belongs to the
+    pipeline as a whole and is passed through the environment, which the
+    helper's set_network_enabled writes, so that reading it here costs nothing
+    and needs no import back into chemietoolkit."""
+    word = os.environ.get("CHEMEAGLE_NETWORK")
+    if word is not None:
+        return word.strip().lower() not in {"0", "false", "no", "off"}
+    word = os.environ.get("CHEMEAGLE_OFFLINE")
+    if word is not None:
+        return word.strip().lower() in {"0", "false", "no", "off"}
+    return True
+
+
 def name2smiles(name: str, allow_shorthand: bool = True) -> Optional[str]:
     """
     Input any name:
@@ -235,6 +249,10 @@ def name2smiles(name: str, allow_shorthand: bool = True) -> Optional[str]:
     Returns the first successfully parsed SMILES; otherwise None
     """
     s = name.strip()
+    if not _network_enabled():
+        # Every parser below is a web service, so an offline run has nothing to
+        # ask. The caller falls back to the local condensed-formula reading.
+        return None
     # 1) Direct parsing first (some shorthands may also be recognized by the databases)
     for fn in (_opsin_name_to_smiles, _pubchem_name_to_smiles, _cir_name_to_smiles):
         smi = fn(s)
