@@ -245,6 +245,7 @@ class _ServiceUnavailable(Exception):
 _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
+
 def _get_json_with_retry(url: str, timeout: float = 5.0,
                          attempts: int = 3, base_delay: float = 1.0) -> Any:
     """Fetch JSON, retrying transport failures and transient server codes with
@@ -790,17 +791,35 @@ _LABEL_TOKEN_RE = re.compile(
 )
 
 
+# One or two bare letters beside an arrow are a compound label ("20 mol % B", "cat. A"), never a name: PubChem
+# answers [B] for B and [C] for C, which would put an element where the figure draws a catalyst.
+_SHORT_LABEL_RE = re.compile(r"^[A-Za-z]{1,2}'?$")
+
+
 def _is_label_like(name: str) -> bool:
     if not isinstance(name, str):
         return False
     k = name.strip()
     if not k:
         return False
-    return bool(_LABEL_TOKEN_RE.match(k))
+    return bool(_LABEL_TOKEN_RE.match(k)) or bool(_SHORT_LABEL_RE.match(k))
+
+
+# A condition line that reads as a sentence rather than a name. No lookup service will know it, and each attempt
+# costs three of them; chemical names stay short ("2,4,6-collidine", "tert-Butyl isocyanide", "N-Boc-L-proline").
+_PROSE_RE = re.compile(r'\b(of|and|or|then|were|was|instead|added|using|with|under|for)\b', re.IGNORECASE)
+
+
+def _looks_like_prose(name: str) -> bool:
+    if not isinstance(name, str):
+        return False
+    k = _strip_stoichiometry(name).strip()
+    return k.count(' ') >= 4 or (bool(_PROSE_RE.search(k)) and ' ' in k)
 
 
 def _resolve_name_to_smiles(name: str,
-                            status: Optional[Dict[str, Any]] = None) -> Optional[str]:
+                            status: Optional[Dict[str, Any]] = None,
+                            offline: bool = False) -> Optional[str]:
     """Resolve a chemical name to a SMILES through alias map, cache, PubChem,
     OPSIN and finally local OCSR.
 
@@ -809,6 +828,11 @@ def _resolve_name_to_smiles(name: str,
     reached, or ``not-found`` when the services answered and none knew the
     name. The caller can then mark the field for later completion rather than
     silently leaving a gap.
+
+    ``offline`` answers from the alias map and the persistent cache only. A
+    name lookup over the network costs seconds and misses nine times out of
+    ten, so it is spent on the entries that carry no structure at all rather
+    than on re-checking the ones that already have one.
     """
     if not isinstance(name, str) or not name.strip():
         return None
@@ -832,8 +856,12 @@ def _resolve_name_to_smiles(name: str,
         if cached is not None:
             print(f"[name->SMILES cache] hit: '{key}' -> {cached!r}")
             return cached
+        if offline:
+            return None
         print(f"[name->SMILES cache] retry negative for '{key}'")
         smi = None
+    elif offline:
+        return None
     else:
         try:
             smi = _query_pubchem_smiles(key)  # writes _PUBCHEM_SMILES_CACHE[key]
@@ -884,21 +912,30 @@ def _mark_smiles_unresolved(item: Dict[str, Any], status: Dict[str, Any]) -> Non
 def _resolve_smiles_for_condition_item(item: Dict[str, Any]) -> None:
     """Look up a SMILES on PubChem for a condition item and write it back.
 
-    Runs whenever ``role`` is ``solvent`` or ``reagent`` (case-insensitive),
-    regardless of whether the item already carries a ``smiles`` key:
+    Runs for every chemical role (solvent, reagent, catalyst, or none given):
 
-      - no ``smiles`` yet  -> add one if PubChem returns a hit
-      - existing ``smiles`` -> overwrite with the PubChem hit (otherwise leave
-        the original value untouched)
+      - no ``smiles`` yet  -> add one if a lookup returns a hit
+      - existing ``smiles`` -> overwritten by the hit for a solvent or reagent,
+        where the name is the authority; a catalyst keeps what it has, because
+        its structure comes from the drawing beside the label, not from a name.
     """
     if not isinstance(item, dict):
         return
     role = item.get('role', '')
-    if not isinstance(role, str) or role.strip().lower() not in {'solvent', 'reagent'}:
+    if not isinstance(role, str) or role.strip().lower() not in _CHEMICAL_CONDITION_ROLES:
+        return
+    has_structure = _readable_smiles_key(item.get('smiles')) is not None
+    if has_structure and role.strip().lower() not in {'solvent', 'reagent'}:
         return
     status: Dict[str, Any] = {}
     for name in _candidate_chem_names(item):
-        smi = _resolve_name_to_smiles(name, status=status)
+        if _is_label_like(_strip_stoichiometry(name)):
+            continue      # "20 mol % B" names the catalyst the figure draws as B, not the element
+        if _looks_like_prose(name):
+            continue      # "1 equiv. of aldehyde and 1.5 equiv. of 3-oxobutanoate were used" is a sentence
+        # an entry that already carries a structure is only re-checked against the alias map and the cache:
+        # the network is for the entries that have none
+        smi = _resolve_name_to_smiles(name, status=status, offline=has_structure)
         if smi:
             old = item.get('smiles', '')
             if old != smi:
@@ -1229,7 +1266,10 @@ def _propagate_catalyst_entries(rows):
     return added
 
 
-_LABEL_TOKEN_RE = re.compile(r"^([A-Za-z]{0,4}\s?[-–]?\s?\d{1,3}[a-z]{0,3}'?|[A-Za-z]{1,4}\d{0,2}'?)")
+# The leading token of a printed identifier. Its own pattern: it is deliberately loose, because it only has to
+# cut a line at its first token, while _LABEL_TOKEN_RE above decides whether a name is a compound label and must
+# stay strict (it used to be shadowed by this one, which stopped every name lookup from ever leaving the alias map).
+_IDT_LEADING_TOKEN_RE = re.compile(r"^([A-Za-z]{0,4}\s?[-–]?\s?\d{1,3}[a-z]{0,3}'?|[A-Za-z]{1,4}\d{0,2}'?)")
 
 
 def _label_tokens(texts):
@@ -1242,7 +1282,7 @@ def _label_tokens(texts):
         if not text:
             continue
         out.append(text)
-        m = _LABEL_TOKEN_RE.match(text)
+        m = _IDT_LEADING_TOKEN_RE.match(text)
         if m and m.group(1).strip():
             out.append(m.group(1).strip())
     return out
