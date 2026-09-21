@@ -25,7 +25,10 @@ from get_observer import action_observer_agent, plan_observer_agent
 from get_text_agent import text_extraction_agent
 import llm_client as llm
 import traceback
-from chemietoolkit.helper import attach_drawn_labelled_structures, _clean_agent_name, _parse_planner_output, _resolve_ordered_agents, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data, propagate_condition_structures_in_data, rgroup_fallback_agent, set_network_enabled, network_enabled, repair_charges_and_radicals_in_data
+from chemietoolkit.helper import (_clean_agent_name, _parse_planner_output, _resolve_ordered_agents,
+                                 fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data,
+                                 fallback_resolve_reactant_product_smiles_in_data, post_verification,
+                                 rgroup_fallback_agent, set_network_enabled, network_enabled)
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -381,12 +384,9 @@ def ChemEagle(
         print(f"ERROR [agent]: final synthesis JSON unparsable ({_e}); raw content saved to "
               f"{llm.dump_unparsable(response.choices[0].message.content, 'final_synthesis')}")
         raise   # tolerates raw backslashes (E/Z SMILES) and fences
-    gpt_output = fallback_validate_and_fix_smiles_in_dict(gpt_output)
-    gpt_output = fallback_resolve_condition_smiles_in_data(gpt_output)
-    gpt_output = fallback_resolve_reactant_product_smiles_in_data(gpt_output)
-    gpt_output = attach_drawn_labelled_structures(gpt_output, get_molecular_agent.label_structures(image_path))   # a condition naming a drawn compound ("B (10 mol%)") takes that drawing, not a name lookup
-    gpt_output = propagate_condition_structures_in_data(gpt_output, drawn_condition_structures(image_path))   # drawn catalysts and labelled reagents shared across the figure's reactions, and the one structure drawn beside the arrow
-    gpt_output = repair_charges_and_radicals_in_data(gpt_output)   # a thiol read as a thiolate, an alcohol carbon as a carbanion, an isocyanide as a nitrilium
+    gpt_output = post_verification(gpt_output,
+                                   label_structures=get_molecular_agent.label_structures(image_path),
+                                   drawn_conditions=drawn_condition_structures(image_path))
 
     if text_extraction_result is not None:
         if isinstance(text_extraction_result, dict) and "annotated_text" in text_extraction_result:
