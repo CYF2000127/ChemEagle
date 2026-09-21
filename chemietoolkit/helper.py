@@ -246,14 +246,13 @@ _RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 
 
 # ---------------------------------------------------------------------------
-# Network switch. Name lookups are the only step of the pipeline that leaves
-# the machine, and a name no service knows costs seconds of waiting, so a run
-# that does not need them should be able to say so. Turned off, the alias map,
-# the persistent cache and the local OPSIN jar answer on their own.
+# Network switch. Name lookups are the only step that leaves the machine; with
+# them off, the alias map, the persistent cache and the local OPSIN jar answer
+# on their own.
 #
-# The setting is read from the environment at import (CHEMEAGLE_NETWORK=0, or
-# CHEMEAGLE_OFFLINE=1) and can be changed at runtime with set_network_enabled,
-# which is what ChemEagle()'s use_network argument calls.
+# Read from the environment at import (CHEMEAGLE_NETWORK=0 or
+# CHEMEAGLE_OFFLINE=1) and changed at runtime with set_network_enabled, which
+# is what ChemEagle()'s use_network argument calls.
 # ---------------------------------------------------------------------------
 _TRUE_WORDS = frozenset({'1', 'true', 'yes', 'on'})
 _FALSE_WORDS = frozenset({'0', 'false', 'no', 'off'})
@@ -331,10 +330,8 @@ def _get_json_with_retry(url: str, timeout: float = 5.0,
 
 _PUBCHEM_SMILES_CACHE: Dict[str, Optional[str]] = {}
 
-# Names recorded as a miss that this process has already re-asked about. A recorded miss means every
-# service answered and none knew the name, so it is worth one retry per run (a database gains entries)
-# but not one per reaction the name appears in: 24 conditions reading '10 mol% PLP' cost 24 chains of
-# web requests, each of them seconds long, for the same settled answer.
+# Names recorded as a miss that this process has already re-asked about: a miss is retried once per run, since
+# the databases gain entries, but not once per condition the name appears in.
 _RETRIED_MISSES: set = set()
 
 # ---------------------------------------------------------------------------
@@ -1532,28 +1529,24 @@ def _propagate_drawn_condition(rows, drawn):
 # Charge and radical repair.
 #
 # A drawn structure is neutral unless the figure prints a charge or draws a
-# counter ion, so a molecule that leaves the recogniser carrying a net charge,
-# or an atom carrying an unpaired electron, is usually a plain atom read as a
-# charged one: a thiol read as a thiolate, an alcohol carbon as a carbanion, a
-# methyl as a lone radical. The exception is the isocyanide, which is neutral
-# only when written charge separated ([C-]#[N+]R), and which the recogniser
-# hands over as a nitrilium cation.
+# counter ion, so a net charge or an unpaired electron on the way out of the
+# recogniser is usually a plain atom read as a charged one: a thiol as a
+# thiolate, an alcohol carbon as a carbanion, a methyl as a lone radical.
 #
-# Only carbon, nitrogen, oxygen and sulfur are touched, so a lone metal atom is
-# never turned into its hydride, and a rewrite that does not survive
-# sanitisation is thrown away. A salt whose charges already balance is left
-# alone, which is what keeps a drawn BF4- or a drawn azolium salt intact.
+# The rules, in the order they are applied:
+#   * R-N#C read as a nitrilium is charge separated into the isocyanide it is;
+#   * a negative charge is dropped while the molecule is net negative;
+#   * a positive charge is dropped while it is net positive, but only on an atom
+#     with no hydrogen, so a protonated amine keeps its proton;
+#   * a radical on carbon or nitrogen is filled with hydrogen, except on a
+#     divalent carbon between two nitrogens, which is a carbene as drawn;
+#   * explicit hydrogens on an atom whose bonds already fill its plain valence
+#     are dropped.
 #
-# Three kinds of radical and charge are real chemistry and stay:
-#   * an aminoxyl radical (TEMPO), so a radical on oxygen is never filled in;
-#   * a carbene between two nitrogens (an NHC), so a carbon carrying no hydrogen
-#     whose two neighbours are nitrogen keeps its unpaired electrons, while a
-#     ring CH read as a radical, or a bare atom left by drawing dirt, is
-#     repaired;
-#   * a protonated amine in a hydrochloride, where the drawn HCl is read as a
-#     neutral chlorine and leaves the molecule net positive. Only a negative
-#     charge is neutralised for that reason, and a positive one only through the
-#     isocyanide rule above.
+# A radical on oxygen (an aminoxyl) is never touched, only carbon, nitrogen,
+# oxygen and sulfur are considered so that a lone metal is never hydrided, a
+# salt whose charges balance is left alone, and a rewrite that fails
+# sanitisation is thrown away.
 # ---------------------------------------------------------------------------
 _REPAIR_ELEMENTS = frozenset({'C', 'N', 'O', 'S'})
 # The valence each of them fills by itself, so that hydrogens written on top of a full atom can be told from the
@@ -1567,12 +1560,7 @@ def _net_charge(mol: Any) -> int:
 
 
 def _repairable_radical(atom: Any) -> bool:
-    """An unpaired electron that is the recogniser's rather than the chemistry's.
-
-    A loose fragment (a methyl or a bare atom left by drawing dirt) and a ring CH read as a radical are repaired.
-    A radical on oxygen is left alone, because TEMPO and its relatives are drawn as such, and so is a divalent
-    carbon with no hydrogen, which is how an N-heterocyclic carbene is drawn.
-    """
+    """An unpaired electron on carbon or nitrogen, other than a carbene between two nitrogens."""
     if not atom.GetNumRadicalElectrons() or atom.GetSymbol() not in {'C', 'N'}:
         return False
     if (atom.GetSymbol() == 'C' and not atom.GetNumExplicitHs()
@@ -1643,9 +1631,8 @@ def _charge_repaired_smiles(smi: str) -> Optional[str]:
         Chem.SanitizeMol(out)
         after = Chem.MolToSmiles(out)
     except Exception:
-        # The bonds of a neutralised atom can already fill a legal valence, and letting RDKit add a hydrogen on top
-        # then pushes it over: a sulfoxonium ylide read as C[S+](C)(=O)=C... is neutral sulfur of valence six, which
-        # is legal until a seventh bond is invented for it. Try again with those atoms taking no implicit hydrogen.
+        # A neutralised atom whose bonds already fill a legal valence must not be given an implicit hydrogen on
+        # top of them: retry with the atoms that were changed taking none.
         for atom in touched:
             atom.SetNumExplicitHs(0)
             atom.SetNoImplicit(True)

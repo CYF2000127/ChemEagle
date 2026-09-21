@@ -58,14 +58,9 @@ def _best(candidates, bbox, threshold):
 
 
 def _bond_order_disagreement(own, donor):
-    """True when the two graphs draw the same atoms in the same places and disagree only about bond orders.
+    """True when the two graphs hold the same atoms and the same connectivity and differ only in bond orders.
 
-    A triple bond read as a double one is the recogniser losing a line, not an OCR mistake, so the molecular
-    agent's edit plan has nothing to say about it and its graph carries no more authority than the reaction
-    agent's. Where the two passes have disagreed that way, the reaction agent has been the one reading the drawing
-    correctly, a triple bond it kept where the other pass had counted two lines, so its reading is the one kept.
-    Double bond geometry is not a bond order and does not count here: E/Z disagreements are left to the adopt as
-    before.
+    Double bond geometry is not a bond order here: E/Z differences alone do not count.
     """
     try:
         from rdkit import Chem, RDLogger
@@ -142,8 +137,8 @@ def adopt(reaction_results, vision_boxes, threshold=0.5):
                     rec.update(matched=False, reason='donor graph invalid, own graph valid')
                     audit.append(rec)
                     continue
-                # Same atoms, different bond orders: the drawing is the same, one pass counted the lines
-                # differently, and the reaction agent has been right about it.
+                # Same atoms, different bond orders: a miscounted line rather than a misread label, which the
+                # edit plan has no say over, so the reaction agent's reading stands.
                 if _bond_order_disagreement(entry.get('smiles'), best.get('smiles')):
                     rec.update(matched=False, reason='donor differs only in bond orders')
                     audit.append(rec)

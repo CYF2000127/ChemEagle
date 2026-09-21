@@ -14,7 +14,7 @@ from get_molecular_agent import (RUNAWAY_GRAPH_ATOMS, RUNAWAY_SMILES_CHARS,  # n
 
 checked = 0
 
-# 1. a cage repeated until the reply would be cut off inside it
+# 1. a repeated ring closure
 runaway = {"category": "[Mol]", "bbox": [0.1, 0.1, 0.2, 0.2],
            "smiles": "CC.CCCCCCCCC1CC2C1" + "C1C2C2C1" * 400,
            "symbols": ["C"] * 3200, "coords": [[0.1, 0.1]] * 3200, "edges": [[0] * 3200] * 3200,
@@ -27,7 +27,7 @@ assert "molfile" not in runaway and runaway["runaway_graph"] is True
 assert runaway["bbox"] == [0.1, 0.1, 0.2, 0.2], "the box keeps its place"
 checked += 1
 
-# 1b. the second shape of the same failure: a field of specks, one fragment each, which the model carried on
+# 1b. a field of specks, one fragment each
 specks = {"smiles": ".".join(["C"] * 120), "symbols": ["C"] * 120, "coords": [[0.1, 0.1]] * 120,
           "edges": [[0] * 120] * 120}
 assert _withhold_runaway_graph(specks) is True
@@ -41,7 +41,7 @@ assert len(crowded["smiles"].split(".")) <= RUNAWAY_SMILES_FRAGMENTS
 assert _withhold_runaway_graph(crowded) is False
 checked += 1
 
-# 1c. the cage that gets through the first two rules: 356 characters, two fragments, 137 atoms
+# 1c. under both bounds above, but more atoms than a drawn structure has
 cage = {"smiles": "CC.CCCCCCCCC1CC2C1" + "C1C2C2C1" * 42, "symbols": ["C"] * 137,
         "coords": [[0.1, 0.1]] * 137, "edges": [[0] * 137] * 137}
 assert len(cage["smiles"]) < RUNAWAY_SMILES_CHARS and cage["smiles"].count(".") + 1 <= RUNAWAY_SMILES_FRAGMENTS

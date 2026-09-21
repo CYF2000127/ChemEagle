@@ -185,30 +185,18 @@ def extract_molecule_corefs(image_path: str) -> list:
     return copy.deepcopy(_vision_cache[image_path])
 
 
-# A molecule drawn in a reaction scheme does not run to four hundred characters, so a SMILES of this length is not
-# a molecule: it is a graph whose ring closures ran away, the recogniser emitting C1C2C2C1 over and over. Left in
-# place it is copied into the answer and the model carries it on, until the reply is cut off inside the string and
-# the figure is lost.
+# Bounds on a readable molecule, past which a graph is taken to be a recogniser artefact rather than a structure:
+# a repeated ring closure (C1C2C2C1 over and over), or a field of specks read as one fragment each.
 RUNAWAY_SMILES_CHARS = 400
-# The same failure arrives a second way: a field of specks read as one fragment per speck, C.C.C.C. repeated. A
-# drawn structure with its counter ions and a solvent runs to a handful of fragments, so a dozen is already past
-# anything a scheme shows; a hundred and twenty single carbons is dirt, and the model will carry the pattern on.
 RUNAWAY_SMILES_FRAGMENTS = 12
-# And a third way in, the one that survives the first two: a cage of 137 atoms whose SMILES is 356 characters, just
-# short of the limit above, which the model then carries on. Structures drawn in a scheme, counter ions and
-# protecting groups included, stay well under a hundred heavy atoms.
 RUNAWAY_GRAPH_ATOMS = 100
 
 
 def _withhold_runaway_graph(box):
-    """Replace a runaway graph with a single placeholder atom, so nothing downstream can copy it.
+    """Replace a runaway graph with a single placeholder atom, so nothing downstream copies it.
 
-    A graph counts as runaway when its SMILES is far longer than a drawn molecule's, when it falls into more
-    fragments than a drawn structure has, or when it carries more atoms than one.
-
-    The box keeps its place, since the detector did find a molecule there; only the reading is withheld. The adopt
-    step already prefers the reaction agent's graph over a donor that is a lone placeholder, so the other vision
-    pass gets its say on that box.
+    A graph is runaway when it passes any of the bounds above. The box keeps its place and its bbox; only the
+    reading is withheld, and the adopt step then takes that box's graph from the reaction agent instead.
     """
     smiles = box.get('smiles')
     if not isinstance(smiles, str) or not smiles:
