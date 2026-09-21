@@ -9,7 +9,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("CHEMEAGLE_NETWORK", "0")
 os.environ.setdefault("API_KEY", "not-used-here")   # importing the agent module asks for one
-from get_molecular_agent import RUNAWAY_SMILES_CHARS, _withhold_runaway_graph  # noqa: E402
+from get_molecular_agent import (RUNAWAY_SMILES_CHARS, RUNAWAY_SMILES_FRAGMENTS,  # noqa: E402
+                                 _withhold_runaway_graph)
 
 checked = 0
 
@@ -24,6 +25,20 @@ assert runaway["coords"] == [[0.5, 0.5]] and runaway["edges"] == [[0]]
 assert runaway["atoms"] == [{"atom_symbol": "*", "x": 0.5, "y": 0.5}] and runaway["bonds"] == []
 assert "molfile" not in runaway and runaway["runaway_graph"] is True
 assert runaway["bbox"] == [0.1, 0.1, 0.2, 0.2], "the box keeps its place"
+checked += 1
+
+# 1b. the second shape of the same failure: a field of specks, one fragment each, which the model carried on
+specks = {"smiles": ".".join(["C"] * 120), "symbols": ["C"] * 120, "coords": [[0.1, 0.1]] * 120,
+          "edges": [[0] * 120] * 120}
+assert _withhold_runaway_graph(specks) is True
+assert specks["smiles"] == "*"
+checked += 1
+
+# ... while a salt with its counter ions and a solvent, the most crowded thing the ground truth draws, is kept
+crowded = {"smiles": ".".join(["[Na+]", "[Cl-]", "O", "CCO", "C1CCOC1"]), "symbols": ["Na"],
+           "coords": [[0.1, 0.1]], "edges": [[0]]}
+assert len(crowded["smiles"].split(".")) <= RUNAWAY_SMILES_FRAGMENTS
+assert _withhold_runaway_graph(crowded) is False
 checked += 1
 
 # 2. a long but real molecule is left alone: the longest in this benchmark's ground truth is 132 characters

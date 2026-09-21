@@ -190,19 +190,29 @@ def extract_molecule_corefs(image_path: str) -> list:
 # emitting C1C2C2C1 over and over. Left in place it is copied into the answer and the reply is cut off inside the
 # string, which loses the whole figure (ajoc.202200438 example 4 failed that way on three attempts).
 RUNAWAY_SMILES_CHARS = 400
+# The same failure arrives a second way: a field of specks read as one box per speck, C.C.C.C. repeated. The
+# ground truth's most crowded entry has ten fragments, so a dozen is already past anything drawn; 18603_image_3_2
+# was handed one of 120 single carbons and the model carried the pattern on for 200000 characters.
+RUNAWAY_SMILES_FRAGMENTS = 12
 
 
 def _withhold_runaway_graph(box):
     """Replace a runaway graph with a single placeholder atom, so nothing downstream can copy it.
+
+    A graph counts as runaway when its SMILES is longer than any molecule of this benchmark by a wide margin, or
+    when it falls into more fragments than any drawn entry has.
 
     The box keeps its place, since the detector did find a molecule there; only the reading is withheld. The adopt
     step already prefers the reaction agent's graph over a donor that is a lone placeholder, so the other vision
     pass gets its say on that box.
     """
     smiles = box.get('smiles')
-    if not isinstance(smiles, str) or len(smiles) <= RUNAWAY_SMILES_CHARS:
+    if not isinstance(smiles, str) or not smiles:
         return False
-    print(f"[repair] runaway graph withheld: {len(smiles)} characters, {smiles[:60]}...")
+    fragments = smiles.count('.') + 1
+    if len(smiles) <= RUNAWAY_SMILES_CHARS and fragments <= RUNAWAY_SMILES_FRAGMENTS:
+        return False
+    print(f"[repair] runaway graph withheld: {len(smiles)} characters, {fragments} fragments, {smiles[:60]}...")
     box['smiles'] = '*'
     box['symbols'] = ['*']
     box['coords'] = [[0.5, 0.5]]
