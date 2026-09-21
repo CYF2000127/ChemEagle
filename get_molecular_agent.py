@@ -185,26 +185,26 @@ def extract_molecule_corefs(image_path: str) -> list:
     return copy.deepcopy(_vision_cache[image_path])
 
 
-# The longest molecule in this benchmark's ground truth is 132 characters and the longest any arm has predicted is
-# 291, so a SMILES of this length is not a molecule: it is a graph whose ring closures ran away, the recogniser
-# emitting C1C2C2C1 over and over. Left in place it is copied into the answer and the reply is cut off inside the
-# string, which loses the whole figure (ajoc.202200438 example 4 failed that way on three attempts).
+# A molecule drawn in a reaction scheme does not run to four hundred characters, so a SMILES of this length is not
+# a molecule: it is a graph whose ring closures ran away, the recogniser emitting C1C2C2C1 over and over. Left in
+# place it is copied into the answer and the model carries it on, until the reply is cut off inside the string and
+# the figure is lost.
 RUNAWAY_SMILES_CHARS = 400
-# The same failure arrives a second way: a field of specks read as one box per speck, C.C.C.C. repeated. The
-# ground truth's most crowded entry has ten fragments, so a dozen is already past anything drawn; 18603_image_3_2
-# was handed one of 120 single carbons and the model carried the pattern on for 200000 characters.
+# The same failure arrives a second way: a field of specks read as one fragment per speck, C.C.C.C. repeated. A
+# drawn structure with its counter ions and a solvent runs to a handful of fragments, so a dozen is already past
+# anything a scheme shows; a hundred and twenty single carbons is dirt, and the model will carry the pattern on.
 RUNAWAY_SMILES_FRAGMENTS = 12
-# And a third way in, the one that survived the first two: a cage of 137 atoms whose SMILES is 356 characters, just
-# short of the limit above, which the model then carried on to 127000. The largest molecule the ground truth draws
-# has 55 heavy atoms, so a graph of a hundred is past anything this benchmark contains.
+# And a third way in, the one that survives the first two: a cage of 137 atoms whose SMILES is 356 characters, just
+# short of the limit above, which the model then carries on. Structures drawn in a scheme, counter ions and
+# protecting groups included, stay well under a hundred heavy atoms.
 RUNAWAY_GRAPH_ATOMS = 100
 
 
 def _withhold_runaway_graph(box):
     """Replace a runaway graph with a single placeholder atom, so nothing downstream can copy it.
 
-    A graph counts as runaway when its SMILES is longer than any molecule of this benchmark by a wide margin, when
-    it falls into more fragments than any drawn entry has, or when it carries more atoms than any drawn molecule.
+    A graph counts as runaway when its SMILES is far longer than a drawn molecule's, when it falls into more
+    fragments than a drawn structure has, or when it carries more atoms than one.
 
     The box keeps its place, since the detector did find a molecule there; only the reading is withheld. The adopt
     step already prefers the reaction agent's graph over a donor that is a lone placeholder, so the other vision

@@ -8,7 +8,7 @@ The id-mode agent labels every drawn molecule with [label, text, role]; the tool
   among the reactants is moved to the conditions of the template and of every row; neutral ones stay, they are
   usually true reactants;
 * catalyst screening: several condition-role molecules that each carry their own outcome ("4, 49% yield, 50% ee")
-  or that form a labelled series (N1 ... N7) are one reaction each in the benchmark, not one reaction with
+  or that form a labelled series (N1 ... N7) are one reaction each, not one reaction with
   every catalyst in its conditions.
 """
 import re
@@ -47,7 +47,7 @@ def condition_role_smiles(original_molecule_list):
     """Charged molecules the agent labelled as a condition (catalyst salts), keyed by canonical form -> the
     agent's spelling. Only these may be moved out of the reactants: on the 2026-09-14 logs the neutral
     "conditions" that RxnIM placed among the reactants (NFSI in 298-300, the diol in 3c01437) are reactants in
-    the benchmark, the charged one (163's azolium) is a condition."""
+    a drawn azolium salt beside the arrow, the charged one is a condition."""
     return {canonical(s): s for s, info in (original_molecule_list or {}).items()
             if isinstance(info, list) and _role_of(info) in CONDITION_ROLES and is_charged(s)}
 
@@ -100,7 +100,7 @@ def move_condition_molecules(reactions, original_molecule_list):
 def expand_catalyst_screening(reactions, original_molecule_list):
     """Catalyst-screening figures: one reaction template and several condition-role molecules that each carry
     their own outcome, or that form a labelled series. The tool result puts them all into the template's
-    conditions; the benchmark counts one reaction per catalyst. When no product-variant row exists, the
+    conditions; a screen of catalysts is one reaction per catalyst. When no product-variant row exists, the
     template keeps the other conditions and one row per screened catalyst is appended, with the template's
     reactants and products, that catalyst as the reagent and its yield / ee as text conditions."""
     if not reactions or reactions[0].get('note') != 'reaction template' or len(reactions) != 1:

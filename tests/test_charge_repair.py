@@ -23,7 +23,7 @@ checked = 0
 for before, after in (("Cc1ccc([S-])cc1", "Cc1ccc(S)cc1"),                       # a thiol read as a thiolate
                       ("C[C-](O)c1ccccc1", "CC(O)c1ccccc1"),                     # an alcohol carbon as a carbanion
                       ("[CH3]", "C"), ("[C]", "C"), ("[NH2]", "N"),              # lone radicals from drawing dirt
-                      ("*[SH2]C1CC1", "*SC1CC1"),                                # the hypervalent sulfur of ejoc.202300506
+                      ("*[SH2]C1CC1", "*SC1CC1"),                                # a hypervalent sulfur
                       ("C#[N+]C(C)(C)C", "[C-]#[N+]C(C)(C)C")):                  # a nitrilium is really an isocyanide
     got = h._charge_repaired_smiles(before)
     assert got == canon(after), (before, got, canon(after))

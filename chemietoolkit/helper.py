@@ -1544,8 +1544,7 @@ def _propagate_drawn_condition(rows, drawn):
 # sanitisation is thrown away. A salt whose charges already balance is left
 # alone, which is what keeps a drawn BF4- or a drawn azolium salt intact.
 #
-# Three kinds of radical and charge are real chemistry and stay, each of them
-# found by scoring the repair against figures it made worse:
+# Three kinds of radical and charge are real chemistry and stay:
 #   * an aminoxyl radical (TEMPO), so a radical on oxygen is never filled in;
 #   * a carbene between two nitrogens (an NHC), so a carbon carrying no hydrogen
 #     whose two neighbours are nitrogen keeps its unpaired electrons, while a

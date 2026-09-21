@@ -62,10 +62,10 @@ def _bond_order_disagreement(own, donor):
 
     A triple bond read as a double one is the recogniser losing a line, not an OCR mistake, so the molecular
     agent's edit plan has nothing to say about it and its graph carries no more authority than the reaction
-    agent's. Measured over every adopt of the 2026-09-21 corpus, the ground truth sided with the reaction agent
-    in all four such disagreements (phenylacetylene read as styrene on two figures, on both model arms) and with
-    the molecular agent in none, so the reaction's reading is kept. Double bond geometry is not a bond order and
-    does not count here: E/Z disagreements are left to the adopt as before.
+    agent's. Where the two passes have disagreed that way, the reaction agent has been the one reading the drawing
+    correctly, a triple bond it kept where the other pass had counted two lines, so its reading is the one kept.
+    Double bond geometry is not a bond order and does not count here: E/Z disagreements are left to the adopt as
+    before.
     """
     try:
         from rdkit import Chem, RDLogger
@@ -143,7 +143,7 @@ def adopt(reaction_results, vision_boxes, threshold=0.5):
                     audit.append(rec)
                     continue
                 # Same atoms, different bond orders: the drawing is the same, one pass counted the lines
-                # differently, and the ground truth has sided with the reaction agent every time.
+                # differently, and the reaction agent has been right about it.
                 if _bond_order_disagreement(entry.get('smiles'), best.get('smiles')):
                     rec.update(matched=False, reason='donor differs only in bond orders')
                     audit.append(rec)

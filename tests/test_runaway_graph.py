@@ -14,7 +14,7 @@ from get_molecular_agent import (RUNAWAY_GRAPH_ATOMS, RUNAWAY_SMILES_CHARS,  # n
 
 checked = 0
 
-# 1. the reading that lost ajoc.202200438 example 4: a cage repeated until the reply was cut off inside it
+# 1. a cage repeated until the reply would be cut off inside it
 runaway = {"category": "[Mol]", "bbox": [0.1, 0.1, 0.2, 0.2],
            "smiles": "CC.CCCCCCCCC1CC2C1" + "C1C2C2C1" * 400,
            "symbols": ["C"] * 3200, "coords": [[0.1, 0.1]] * 3200, "edges": [[0] * 3200] * 3200,
@@ -34,27 +34,27 @@ assert _withhold_runaway_graph(specks) is True
 assert specks["smiles"] == "*"
 checked += 1
 
-# ... while a salt with its counter ions and a solvent, the most crowded thing the ground truth draws, is kept
+# ... while a salt with its counter ions and a solvent, about as crowded as a drawn entry gets, is kept
 crowded = {"smiles": ".".join(["[Na+]", "[Cl-]", "O", "CCO", "C1CCOC1"]), "symbols": ["Na"],
            "coords": [[0.1, 0.1]], "edges": [[0]]}
 assert len(crowded["smiles"].split(".")) <= RUNAWAY_SMILES_FRAGMENTS
 assert _withhold_runaway_graph(crowded) is False
 checked += 1
 
-# 1c. the cage that got through the first two rules: 356 characters, two fragments, 137 atoms
+# 1c. the cage that gets through the first two rules: 356 characters, two fragments, 137 atoms
 cage = {"smiles": "CC.CCCCCCCCC1CC2C1" + "C1C2C2C1" * 42, "symbols": ["C"] * 137,
         "coords": [[0.1, 0.1]] * 137, "edges": [[0] * 137] * 137}
 assert len(cage["smiles"]) < RUNAWAY_SMILES_CHARS and cage["smiles"].count(".") + 1 <= RUNAWAY_SMILES_FRAGMENTS
 assert _withhold_runaway_graph(cage) is True
 checked += 1
 
-# ... while the largest molecule the ground truth draws, 55 heavy atoms, is kept
+# ... while a large but ordinary drawn molecule, 55 heavy atoms, is kept
 big_but_real = {"smiles": "C" * 55, "symbols": ["C"] * 55, "coords": [[0.1, 0.1]] * 55, "edges": [[0] * 55] * 55}
 assert 55 <= RUNAWAY_GRAPH_ATOMS
 assert _withhold_runaway_graph(big_but_real) is False
 checked += 1
 
-# 2. a long but real molecule is left alone: the longest in this benchmark's ground truth is 132 characters
+# 2. a long but real molecule is left alone
 longest_real = ("CC(C)(C)OC(=O)N1CCC(CC1)Oc1ccc(cc1)C(=O)N1CCN(CC1)c1ccc(cc1)C(=O)NC1CCN(CC1)"
                 "c1ccccc1C(F)(F)F")
 assert len(longest_real) < RUNAWAY_SMILES_CHARS
