@@ -185,6 +185,35 @@ def extract_molecule_corefs(image_path: str) -> list:
     return copy.deepcopy(_vision_cache[image_path])
 
 
+# The longest molecule in this benchmark's ground truth is 132 characters and the longest any arm has predicted is
+# 291, so a SMILES of this length is not a molecule: it is a graph whose ring closures ran away, the recogniser
+# emitting C1C2C2C1 over and over. Left in place it is copied into the answer and the reply is cut off inside the
+# string, which loses the whole figure (ajoc.202200438 example 4 failed that way on three attempts).
+RUNAWAY_SMILES_CHARS = 400
+
+
+def _withhold_runaway_graph(box):
+    """Replace a runaway graph with a single placeholder atom, so nothing downstream can copy it.
+
+    The box keeps its place, since the detector did find a molecule there; only the reading is withheld. The adopt
+    step already prefers the reaction agent's graph over a donor that is a lone placeholder, so the other vision
+    pass gets its say on that box.
+    """
+    smiles = box.get('smiles')
+    if not isinstance(smiles, str) or len(smiles) <= RUNAWAY_SMILES_CHARS:
+        return False
+    print(f"[repair] runaway graph withheld: {len(smiles)} characters, {smiles[:60]}...")
+    box['smiles'] = '*'
+    box['symbols'] = ['*']
+    box['coords'] = [[0.5, 0.5]]
+    box['edges'] = [[0]]
+    box['atoms'] = [{'atom_symbol': '*', 'x': 0.5, 'y': 0.5}]
+    box['bonds'] = []
+    box.pop('molfile', None)
+    box['runaway_graph'] = True
+    return True
+
+
 def _repair_vision_graphs(result):
     """Deterministic graph repairs on the pristine vision result, before anything reads it: drawing dirt read
     as a loose atom (postprocess.drop_dirt_atoms: a speck that becomes an extra "*." fragment), misplaced ring
@@ -194,6 +223,8 @@ def _repair_vision_graphs(result):
     for item in result or []:
         for box in item.get('bboxes', []) or []:
             if not all(k in box for k in ('coords', 'symbols', 'edges')):
+                continue
+            if _withhold_runaway_graph(box):
                 continue
             dirt = _drop_dirt_atoms(box)
             changed = _repair_ring_bonds(box)
