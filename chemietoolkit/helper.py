@@ -1602,6 +1602,7 @@ def _charge_repaired_smiles(smi: str) -> Optional[str]:
             and not any(_spurious_hydrogens(a) for a in mol.GetAtoms())):
         return None
     work = Chem.RWMol(mol)
+    touched = []
     if _net_charge(work) > 0:
         # R-N#C read as a nitrilium: the terminal carbon takes the matching minus
         for atom in work.GetAtoms():
@@ -1622,12 +1623,14 @@ def _charge_repaired_smiles(smi: str) -> Optional[str]:
             atom.SetFormalCharge(0)
             atom.SetNoImplicit(False)
             atom.SetNumExplicitHs(0)
+            touched.append(atom)
         # A plus on an atom that carries no hydrogen is the recogniser's: an amide nitrogen read as [N+]. A
         # protonated amine keeps its plus, because its hydrogens are how the figure draws the salt, and a
         # quaternary nitrogen keeps it too, since dropping it leaves a valence sanitisation refuses.
         elif atom.GetFormalCharge() > 0 and _net_charge(work) > 0 and not atom.GetTotalNumHs():
             atom.SetFormalCharge(0)
             atom.SetNoImplicit(False)
+            touched.append(atom)
     for atom in work.GetAtoms():
         if _repairable_radical(atom):
             atom.SetNumRadicalElectrons(0)
@@ -1641,7 +1644,18 @@ def _charge_repaired_smiles(smi: str) -> Optional[str]:
         Chem.SanitizeMol(out)
         after = Chem.MolToSmiles(out)
     except Exception:
-        return None
+        # The bonds of a neutralised atom can already fill a legal valence, and letting RDKit add a hydrogen on top
+        # then pushes it over: a sulfoxonium ylide read as C[S+](C)(=O)=C... is neutral sulfur of valence six, which
+        # is legal until a seventh bond is invented for it. Try again with those atoms taking no implicit hydrogen.
+        for atom in touched:
+            atom.SetNumExplicitHs(0)
+            atom.SetNoImplicit(True)
+        out = work.GetMol()
+        try:
+            Chem.SanitizeMol(out)
+            after = Chem.MolToSmiles(out)
+        except Exception:
+            return None
     if not after or after == before or Chem.MolFromSmiles(after) is None:
         return None
     return after

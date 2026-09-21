@@ -35,6 +35,11 @@ assert h._charge_repaired_smiles("[H]C(=O)C(=O)[N+]1CCOCC1") == canon("O=CC(=O)N
 assert h._charge_repaired_smiles("Brc1cc[c]cc1") == canon("Brc1ccccc1")
 checked += 3
 
+# a sulfoxonium ylide read as a cation: neutralising it fills the sulfur's valence exactly, so no hydrogen is added.
+# The answer spells the sulfur in brackets, since it now carries no implicit hydrogen, and is the same molecule.
+assert canon(h._charge_repaired_smiles("C[S+](C)(=O)=CC(=O)c1ccccc1")) == canon("CS(C)(=O)=CC(=O)c1ccccc1")
+checked += 1
+
 # 2. what must survive untouched
 for kept in ("[C-]#[N+]C(C)(C)C",                                                # already the charge separated form
              "CCCC[N+](CCCC)(CCCC)CCCC.[F-]",                                    # a drawn salt, charges balanced
