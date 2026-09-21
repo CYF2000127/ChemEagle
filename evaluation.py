@@ -79,7 +79,7 @@ def canon_smiles(smi: Any) -> Optional[str]:
         return None
     mol = Chem.MolFromSmiles(s)
     stereo = False   # with or w/o stereo.
-    ions = True     # with or w/o ions.
+    ions = False     # with or w/o ions.
     if mol is None:
         return None
     try:

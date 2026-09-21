@@ -1686,20 +1686,6 @@ def propagate_condition_structures_in_data(data, drawn=None):
 
 
 def post_verification(data: Any, label_structures: Any = None, drawn_conditions: Any = None) -> Any:
-    """Everything the result is checked and repaired against after the final synthesis, in order.
-
-    1. unparsable SMILES are repaired structurally;
-    2. condition names are resolved to structures;
-    3. reactant and product names likewise;
-    4. a condition naming a compound the figure draws takes that drawing, from ``label_structures``
-       (label -> SMILES, as the molecule agent registered them);
-    5. condition structures are shared across the reactions of the figure, including the one drawn beside the
-       arrow when ``drawn_conditions`` names it;
-    6. a charge or a radical the drawing does not show is read as the recogniser's and neutralised.
-
-    Both extra arguments may be left out; the steps that use them then have nothing to add. Use the value this
-    returns: the first step rebuilds the tree, the ones after it repair that copy in place.
-    """
     data = fallback_validate_and_fix_smiles_in_dict(data)
     data = fallback_resolve_condition_smiles_in_data(data)
     data = fallback_resolve_reactant_product_smiles_in_data(data)
