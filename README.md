@@ -95,7 +95,6 @@ export MODEL=gemini-3.7-flash                # optional, this is the default
 2. Run:
 ```python
 from main import ChemEagle
-
 results = ChemEagle('./examples/1.png')                      # uses MODEL, else gemini-3.7-flash
 results = ChemEagle('./examples/1.png', model_name='gpt-5.6-terra')   # or any other model id
 print(results)
@@ -271,9 +270,11 @@ All benchmark datasets and ground truth can be found in our [Huggingface Repo](h
 
 Go to our [ChemEAGLE.Web app demo](https://app.chemeagle.net/) to directly use our tool online for both image and PDF input! The built-in Ketcher editor on the right lets you instantly visualize, verify, and fine-tune any extracted molecular structure before exporting. Feel free to provide us with any feedback too! (Note: The app runs on the HPC4.ust.hk server with a maximum uptime of 3 days; it is restarted for maintenance every three days, please wait a moment if the site is temporarily unavailable or raises a connection error.)
 
-#### May 30 Update: Fixed some output bugs.
+#### May 30 Update: 
+Fixed some output bugs.
 
-#### Sep 16 Update: Any OpenAI-compatible model can now be used (a hosted API, a gateway, or a local vLLM server), and the default model is now `gemini-3.7-flash` instead of Azure OpenAI. The molecule agent corrects its vision output through an applied edit plan, unreadable SMILES of drawn catalysts and reagents are repaired, and the substituent table expands 103 more abbreviations.
+#### Sep 16 Update: 
+Any OpenAI-compatible model can now be used (a hosted API, a gateway, or a local vLLM server), and the default model is now `gemini-3.7-flash` instead of Azure OpenAI. The molecule agent corrects its vision output through an applied edit plan, unreadable SMILES of drawn catalysts and reagents are repaired.
 
 ### 🐍 Programmatic access: ChemEAGLE API & Python SDK (Testing)
 
