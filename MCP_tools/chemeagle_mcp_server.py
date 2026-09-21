@@ -123,11 +123,10 @@ def _patch_chemrxnextractor() -> None:
 def _resolve(image_path: str) -> str:
     """Resolve + sandbox an image path. Raises on escape attempts.
 
-    Two guards, because when one warm server is shared across a whole run the
-    image root is the benchmark directory -- which also contains the ground
-    truth (GT1.json, GT3.csv, ...):
+    Two guards, because a warm server shared across a run takes its images from
+    a directory that may hold other files as well:
       1. path must stay under --image-root
-      2. path must be an image file, so no tool can be pointed at a GT file
+      2. path must be an image file, so no tool can be pointed at anything else
     """
     root = _CFG.get("image_root")
     p = os.path.abspath(image_path)
@@ -716,7 +715,7 @@ def main() -> int:
                     choices=["stdio", "sse", "streamable-http"],
                     help="stdio spawns one server per agent session (models "
                          "reload every time); streamable-http serves one warm "
-                         "server for a whole benchmark run")
+                         "server for a whole batch of images")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8931)
     ap.add_argument("--warm", action="store_true",

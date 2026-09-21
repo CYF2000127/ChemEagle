@@ -244,8 +244,8 @@ SUBSTITUTIONS: List[Substitution] = [
     Substitution(['Si(OEt)3'], '[Si](OCC)(OCC)OCC', '[Si](OCC)(OCC)OCC', 0.2),
     Substitution(['SiPhMe2'], '[Si](C)(C)c1ccccc1', '[Si](C)(C)c1ccccc1', 0.2),  # was unparsable
 
-    ### 2026-09-14: spellings found by surveying every symbol of the 324-image benchmark runs
-    ### (analysis_gap/x_symbol_survey.py); each entry checked by expanding it on a graph and against the GT
+    ### Spellings the recogniser returns for common reagents, catalysts and protecting groups, each checked by
+    ### expanding it on a graph
     # standalone species (text boxes read as one "molecule")
     Substitution(['ClO4-', 'ClO4'], "Cl([O-])(=O)(=O)=O", "Cl([O-])(=O)(=O)=O", 0),
     Substitution(['A-HBF4', '20BF4', '38F4', 'HBF'], 'F[B-](F)(F)F', "F[B-](F)(F)F", 0),  # OCR of BF4 / HBF4
