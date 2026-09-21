@@ -9,8 +9,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("CHEMEAGLE_NETWORK", "0")
 os.environ.setdefault("API_KEY", "not-used-here")   # importing the agent module asks for one
-from get_molecular_agent import (RUNAWAY_SMILES_CHARS, RUNAWAY_SMILES_FRAGMENTS,  # noqa: E402
-                                 _withhold_runaway_graph)
+from get_molecular_agent import (RUNAWAY_GRAPH_ATOMS, RUNAWAY_SMILES_CHARS,  # noqa: E402
+                                 RUNAWAY_SMILES_FRAGMENTS, _withhold_runaway_graph)
 
 checked = 0
 
@@ -39,6 +39,19 @@ crowded = {"smiles": ".".join(["[Na+]", "[Cl-]", "O", "CCO", "C1CCOC1"]), "symbo
            "coords": [[0.1, 0.1]], "edges": [[0]]}
 assert len(crowded["smiles"].split(".")) <= RUNAWAY_SMILES_FRAGMENTS
 assert _withhold_runaway_graph(crowded) is False
+checked += 1
+
+# 1c. the cage that got through the first two rules: 356 characters, two fragments, 137 atoms
+cage = {"smiles": "CC.CCCCCCCCC1CC2C1" + "C1C2C2C1" * 42, "symbols": ["C"] * 137,
+        "coords": [[0.1, 0.1]] * 137, "edges": [[0] * 137] * 137}
+assert len(cage["smiles"]) < RUNAWAY_SMILES_CHARS and cage["smiles"].count(".") + 1 <= RUNAWAY_SMILES_FRAGMENTS
+assert _withhold_runaway_graph(cage) is True
+checked += 1
+
+# ... while the largest molecule the ground truth draws, 55 heavy atoms, is kept
+big_but_real = {"smiles": "C" * 55, "symbols": ["C"] * 55, "coords": [[0.1, 0.1]] * 55, "edges": [[0] * 55] * 55}
+assert 55 <= RUNAWAY_GRAPH_ATOMS
+assert _withhold_runaway_graph(big_but_real) is False
 checked += 1
 
 # 2. a long but real molecule is left alone: the longest in this benchmark's ground truth is 132 characters

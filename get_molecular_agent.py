@@ -194,13 +194,17 @@ RUNAWAY_SMILES_CHARS = 400
 # ground truth's most crowded entry has ten fragments, so a dozen is already past anything drawn; 18603_image_3_2
 # was handed one of 120 single carbons and the model carried the pattern on for 200000 characters.
 RUNAWAY_SMILES_FRAGMENTS = 12
+# And a third way in, the one that survived the first two: a cage of 137 atoms whose SMILES is 356 characters, just
+# short of the limit above, which the model then carried on to 127000. The largest molecule the ground truth draws
+# has 55 heavy atoms, so a graph of a hundred is past anything this benchmark contains.
+RUNAWAY_GRAPH_ATOMS = 100
 
 
 def _withhold_runaway_graph(box):
     """Replace a runaway graph with a single placeholder atom, so nothing downstream can copy it.
 
-    A graph counts as runaway when its SMILES is longer than any molecule of this benchmark by a wide margin, or
-    when it falls into more fragments than any drawn entry has.
+    A graph counts as runaway when its SMILES is longer than any molecule of this benchmark by a wide margin, when
+    it falls into more fragments than any drawn entry has, or when it carries more atoms than any drawn molecule.
 
     The box keeps its place, since the detector did find a molecule there; only the reading is withheld. The adopt
     step already prefers the reaction agent's graph over a donor that is a lone placeholder, so the other vision
@@ -210,9 +214,12 @@ def _withhold_runaway_graph(box):
     if not isinstance(smiles, str) or not smiles:
         return False
     fragments = smiles.count('.') + 1
-    if len(smiles) <= RUNAWAY_SMILES_CHARS and fragments <= RUNAWAY_SMILES_FRAGMENTS:
+    atoms = len(box.get('symbols') or [])
+    if (len(smiles) <= RUNAWAY_SMILES_CHARS and fragments <= RUNAWAY_SMILES_FRAGMENTS
+            and atoms <= RUNAWAY_GRAPH_ATOMS):
         return False
-    print(f"[repair] runaway graph withheld: {len(smiles)} characters, {fragments} fragments, {smiles[:60]}...")
+    print(f"[repair] runaway graph withheld: {len(smiles)} characters, {fragments} fragments, {atoms} atoms, "
+          f"{smiles[:60]}...")
     box['smiles'] = '*'
     box['symbols'] = ['*']
     box['coords'] = [[0.5, 0.5]]
