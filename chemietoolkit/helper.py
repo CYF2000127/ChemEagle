@@ -1528,6 +1528,142 @@ def _propagate_drawn_condition(rows, drawn):
     return added
 
 
+# ---------------------------------------------------------------------------
+# Charge and radical repair.
+#
+# A drawn structure is neutral unless the figure prints a charge or draws a
+# counter ion, so a molecule that leaves the recogniser carrying a net charge,
+# or an atom carrying an unpaired electron, is usually a plain atom read as a
+# charged one: a thiol read as a thiolate, an alcohol carbon as a carbanion, a
+# methyl as a lone radical. The exception is the isocyanide, which is neutral
+# only when written charge separated ([C-]#[N+]R), and which the recogniser
+# hands over as a nitrilium cation.
+#
+# Only carbon, nitrogen, oxygen and sulfur are touched, so a lone metal atom is
+# never turned into its hydride, and a rewrite that does not survive
+# sanitisation is thrown away. A salt whose charges already balance is left
+# alone, which is what keeps a drawn BF4- or a drawn azolium salt intact.
+#
+# Three kinds of radical and charge are real chemistry and stay, each of them
+# found by scoring the repair against figures it made worse:
+#   * an aminoxyl radical (TEMPO), so a radical on oxygen is never filled in;
+#   * a carbene between two nitrogens (an NHC), so a carbon carrying no hydrogen
+#     whose two neighbours are nitrogen keeps its unpaired electrons, while a
+#     ring CH read as a radical, or a bare atom left by drawing dirt, is
+#     repaired;
+#   * a protonated amine in a hydrochloride, where the drawn HCl is read as a
+#     neutral chlorine and leaves the molecule net positive. Only a negative
+#     charge is neutralised for that reason, and a positive one only through the
+#     isocyanide rule above.
+# ---------------------------------------------------------------------------
+_REPAIR_ELEMENTS = frozenset({'C', 'N', 'O', 'S'})
+# The valence each of them fills by itself, so that hydrogens written on top of a full atom can be told from the
+# hydrogens that belong there. Sulfur is the one that matters: it also has legal valences of 4 and 6, so RDKit
+# accepts [SH2] between two carbons without complaint, and the two hydrogens survive into the answer.
+_PLAIN_VALENCE = {'C': 4, 'N': 3, 'O': 2, 'S': 2}
+
+
+def _net_charge(mol: Any) -> int:
+    return sum(a.GetFormalCharge() for a in mol.GetAtoms())
+
+
+def _repairable_radical(atom: Any) -> bool:
+    """An unpaired electron that is the recogniser's rather than the chemistry's.
+
+    A loose fragment (a methyl or a bare atom left by drawing dirt) and a ring CH read as a radical are repaired.
+    A radical on oxygen is left alone, because TEMPO and its relatives are drawn as such, and so is a divalent
+    carbon with no hydrogen, which is how an N-heterocyclic carbene is drawn.
+    """
+    if not atom.GetNumRadicalElectrons() or atom.GetSymbol() not in {'C', 'N'}:
+        return False
+    if (atom.GetSymbol() == 'C' and not atom.GetNumExplicitHs()
+            and sorted(n.GetSymbol() for n in atom.GetNeighbors()) == ['N', 'N']):
+        return False          # a carbon between two nitrogens and carrying no hydrogen is an NHC, as drawn
+    return True
+
+
+def _spurious_hydrogens(atom: Any) -> bool:
+    """Explicit hydrogens on a neutral atom whose bonds already fill its plain valence."""
+    return (atom.GetSymbol() in _PLAIN_VALENCE and not atom.GetFormalCharge()
+            and atom.GetNumExplicitHs() > 0
+            and atom.GetExplicitValence() > _PLAIN_VALENCE[atom.GetSymbol()])
+
+
+def _charge_repaired_smiles(smi: str) -> Optional[str]:
+    """The neutral reading of a molecule the recogniser charged, or None when there is nothing to repair."""
+    if not RDKIT_AVAILABLE or not isinstance(smi, str) or not smi.strip():
+        return None
+    mol = Chem.MolFromSmiles(smi)
+    if mol is None:
+        return None
+    before = Chem.MolToSmiles(mol)
+    if (_net_charge(mol) == 0
+            and not any(_repairable_radical(a) for a in mol.GetAtoms())
+            and not any(_spurious_hydrogens(a) for a in mol.GetAtoms())):
+        return None
+    work = Chem.RWMol(mol)
+    if _net_charge(work) > 0:
+        # R-N#C read as a nitrilium: the terminal carbon takes the matching minus
+        for atom in work.GetAtoms():
+            if atom.GetSymbol() != 'N' or atom.GetFormalCharge() != 1:
+                continue
+            for nb in atom.GetNeighbors():
+                bond = work.GetBondBetweenAtoms(atom.GetIdx(), nb.GetIdx())
+                if (nb.GetSymbol() == 'C' and bond is not None
+                        and bond.GetBondType() == Chem.BondType.TRIPLE
+                        and nb.GetDegree() == 1 and nb.GetTotalNumHs() == 1):
+                    nb.SetFormalCharge(-1)
+                    nb.SetNumExplicitHs(0)
+                    nb.SetNoImplicit(True)
+    for atom in work.GetAtoms():
+        if atom.GetSymbol() not in _REPAIR_ELEMENTS:
+            continue
+        if atom.GetFormalCharge() < 0 and _net_charge(work) < 0:
+            atom.SetFormalCharge(0)
+            atom.SetNoImplicit(False)
+            atom.SetNumExplicitHs(0)
+        # A plus on an atom that carries no hydrogen is the recogniser's: an amide nitrogen read as [N+]. A
+        # protonated amine keeps its plus, because its hydrogens are how the figure draws the salt, and a
+        # quaternary nitrogen keeps it too, since dropping it leaves a valence sanitisation refuses.
+        elif atom.GetFormalCharge() > 0 and _net_charge(work) > 0 and not atom.GetTotalNumHs():
+            atom.SetFormalCharge(0)
+            atom.SetNoImplicit(False)
+    for atom in work.GetAtoms():
+        if _repairable_radical(atom):
+            atom.SetNumRadicalElectrons(0)
+            atom.SetNoImplicit(False)
+    for atom in work.GetAtoms():
+        if _spurious_hydrogens(atom):
+            atom.SetNumExplicitHs(0)
+            atom.SetNoImplicit(False)
+    out = work.GetMol()
+    try:
+        Chem.SanitizeMol(out)
+        after = Chem.MolToSmiles(out)
+    except Exception:
+        return None
+    if not after or after == before or Chem.MolFromSmiles(after) is None:
+        return None
+    return after
+
+
+def repair_charges_and_radicals_in_data(data: Any) -> Any:
+    """Walk the result tree and give every `smiles` its neutral reading where one applies (in place)."""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == 'smiles' and isinstance(value, str):
+                fixed = _charge_repaired_smiles(value)
+                if fixed:
+                    print(f"[charge repair] {value} -> {fixed}")
+                    data[key] = fixed
+            else:
+                repair_charges_and_radicals_in_data(value)
+    elif isinstance(data, list):
+        for value in data:
+            repair_charges_and_radicals_in_data(value)
+    return data
+
+
 def propagate_condition_structures_in_data(data, drawn=None):
     """Share drawn catalyst / labelled reagent structures across the reactions of one figure (in place)."""
     if isinstance(data, dict):

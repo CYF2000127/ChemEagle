@@ -25,7 +25,7 @@ from get_observer import action_observer_agent, plan_observer_agent
 from get_text_agent import text_extraction_agent
 import llm_client as llm
 import traceback
-from chemietoolkit.helper import attach_drawn_labelled_structures, _clean_agent_name, _parse_planner_output, _resolve_ordered_agents, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data, propagate_condition_structures_in_data, rgroup_fallback_agent, set_network_enabled, network_enabled
+from chemietoolkit.helper import attach_drawn_labelled_structures, _clean_agent_name, _parse_planner_output, _resolve_ordered_agents, fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data, fallback_resolve_reactant_product_smiles_in_data, propagate_condition_structures_in_data, rgroup_fallback_agent, set_network_enabled, network_enabled, repair_charges_and_radicals_in_data
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -386,6 +386,7 @@ def ChemEagle(
     gpt_output = fallback_resolve_reactant_product_smiles_in_data(gpt_output)
     gpt_output = attach_drawn_labelled_structures(gpt_output, get_molecular_agent.label_structures(image_path))   # a condition naming a drawn compound ("B (10 mol%)") takes that drawing, not a name lookup
     gpt_output = propagate_condition_structures_in_data(gpt_output, drawn_condition_structures(image_path))   # drawn catalysts and labelled reagents shared across the figure's reactions, and the one structure drawn beside the arrow
+    gpt_output = repair_charges_and_radicals_in_data(gpt_output)   # a thiol read as a thiolate, an alcohol carbon as a carbanion, an isocyanide as a nitrilium
 
     if text_extraction_result is not None:
         if isinstance(text_extraction_result, dict) and "annotated_text" in text_extraction_result:
