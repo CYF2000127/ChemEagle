@@ -57,6 +57,56 @@ def _best(candidates, bbox, threshold):
     return (best, best_iou) if best is not None and best_iou >= threshold else (None, 0.0)
 
 
+def _bond_order_disagreement(own, donor):
+    """True when the two graphs draw the same atoms in the same places and disagree only about bond orders.
+
+    A triple bond read as a double one is the recogniser losing a line, not an OCR mistake, so the molecular
+    agent's edit plan has nothing to say about it and its graph carries no more authority than the reaction
+    agent's. Measured over every adopt of the 2026-09-21 corpus, the ground truth sided with the reaction agent
+    in all four such disagreements (phenylacetylene read as styrene on two figures, on both model arms) and with
+    the molecular agent in none, so the reaction's reading is kept. Double bond geometry is not a bond order and
+    does not count here: E/Z disagreements are left to the adopt as before.
+    """
+    try:
+        from rdkit import Chem, RDLogger
+        RDLogger.DisableLog('rdApp.*')
+    except Exception:
+        return False
+    if not isinstance(own, str) or not isinstance(donor, str):
+        return False
+    a, b = Chem.MolFromSmiles(own), Chem.MolFromSmiles(donor)
+    if a is None or b is None:
+        return False
+
+    def flattened(mol):
+        work = Chem.RWMol(mol)
+        for bond in work.GetBonds():
+            bond.SetBondType(Chem.BondType.SINGLE)
+            bond.SetIsAromatic(False)
+        for atom in work.GetAtoms():
+            atom.SetIsAromatic(False)
+            atom.SetNumExplicitHs(0)
+            atom.SetNoImplicit(True)
+        try:
+            return Chem.MolToSmiles(work.GetMol())
+        except Exception:
+            return None
+
+    def without_stereo(mol):
+        copy_of = Chem.Mol(mol)
+        Chem.RemoveStereochemistry(copy_of)
+        try:
+            return Chem.MolToSmiles(copy_of)
+        except Exception:
+            return None
+
+    flat = flattened(a)
+    if flat is None or flat != flattened(b):                   # different atoms or different connectivity
+        return False
+    plain_a, plain_b = without_stereo(a), without_stereo(b)    # geometry set aside, so E/Z alone never fires
+    return plain_a is not None and plain_b is not None and plain_a != plain_b
+
+
 def adopt(reaction_results, vision_boxes, threshold=0.5):
     """Make the molecular agent's boxes the reaction's molecules.
 
@@ -90,6 +140,12 @@ def adopt(reaction_results, vision_boxes, threshold=0.5):
                 # the two crops differ, and only the readable graph can be scored or back-substituted.
                 if smiles_valid(best.get('smiles')) is False and smiles_valid(entry.get('smiles')):
                     rec.update(matched=False, reason='donor graph invalid, own graph valid')
+                    audit.append(rec)
+                    continue
+                # Same atoms, different bond orders: the drawing is the same, one pass counted the lines
+                # differently, and the ground truth has sided with the reaction agent every time.
+                if _bond_order_disagreement(entry.get('smiles'), best.get('smiles')):
+                    rec.update(matched=False, reason='donor differs only in bond orders')
                     audit.append(rec)
                     continue
                 entry['rxnim_bbox'] = list(entry['bbox'])
