@@ -133,8 +133,7 @@ print(results['reactions'][0]['confidence'])
 ```
 `score` is the estimated probability that the reaction is correct, and `level` is `high` (≥ 0.85), `medium`
 (0.5 to 0.85) or `low` (< 0.5). Nothing is removed from the output. Set `confidence_llm=True` to let an LLM
-check the output as well (one extra call per figure, more accurate; supported checkers: `gemini-3.7-flash`,
-`gpt-5-mini`), or `use_confidence=False` to turn scoring off.
+check the output as well.
 
 #### Option B: ChemEagle with a local model (vLLM)
 
