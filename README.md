@@ -122,6 +122,71 @@ for fname in sorted(os.listdir(output_dir)):
 print(results)
 ```
 
+#### Confidence scores
+
+Every result carries a confidence score for each reaction (on by default). After the final synthesis, a
+scorer (`get_confidence.py`) estimates for every extracted reaction the probability that it is fully correct
+and adds it to that reaction. Nothing is removed or changed:
+```python
+results = ChemEagle('./examples/1.png')
+for rxn in results['reactions']:
+    print(rxn['reaction_id'], rxn['confidence'])
+# for example:
+# 1 {'score': 0.936, 'level': 'high', 'flags': ['duplicate_product']}
+# 2 {'score': 0.869, 'level': 'high', 'flags': ['duplicate_product']}
+print(results['confidence_summary'])
+# {'scorer': 'deterministic', 'checker_model': None, 'output_reactions': 5,
+#  'levels': {'high': 5, 'medium': 0, 'low': 0}, 'low_confidence_reactions': [], 'warnings': []}
+```
+
+* `score`: calibrated probability that the reaction is fully correct under the benchmark's hard match
+  (reactants, products and drawn conditions; stereo stripped, largest fragment of each molecule).
+* `level`: `high` (score ≥ 0.85), `medium` (0.5 to 0.85) or `low` (below 0.5).
+* `flags`: what the score saw, for example `unresolved_placeholder`, `invalid_or_missing_smiles`,
+  `multi_fragment_molecule`, `unbalanced_charge`, `duplicate_product`, `molecule_written_by_synthesis`.
+  With the LLM checker also `checker_structures_no`, `checker_incomplete`, `checker_conditions_no`,
+  `checker_unresolved`, and a one-line `checker_note` when the checker names a problem.
+* `confidence_summary`: the level counts and the low-confidence reaction ids; with the checker also the
+  number of reactions it expects in the figure and the entries it finds missing.
+
+The score comes from a gradient-boosted classifier with isotonic calibration (`confidence_models/`),
+trained on the ground truth of the 324 benchmark figures. By default it uses deterministic features of the
+output and of the run (placeholders left, fragments, charges, whether each molecule was copied from an agent
+result, which agents ran), which costs no API call. Optionally, a checker LLM looks at the figure and the
+extracted reactions once and answers fixed yes / no / unsure questions about each reaction; its answers
+become further features, and the LLM never gives the number itself. This costs one extra call per figure
+and sharpens the score: on held-out benchmark figures the AUROC rose from 0.82 (deterministic) to 0.88 with
+`gemini-3.7-flash` as checker and to 0.85 with `gpt-5-mini`.
+
+| Argument | Environment variable | Default | Meaning |
+|---|---|---|---|
+| `use_confidence` | `CHEMEAGLE_CONFIDENCE` | on | score the output |
+| `confidence_llm` | `CHEMEAGLE_CONFIDENCE_LLM` | off | also use the checker LLM |
+| `confidence_checker` | `CHEMEAGLE_CONFIDENCE_CHECKER` | the extraction model | the checker model |
+
+```python
+results = ChemEagle(img, model_name='gpt-5-mini', confidence_llm=True)    # gpt-5-mini checks its own output
+results = ChemEagle(img, model_name='gpt-5-mini', confidence_llm=True,
+                    confidence_checker='gemini-3.7-flash')                   # another model checks it
+results = ChemEagle(img, use_confidence=False)                               # no scores
+```
+
+How to use the levels depends on the model. In cross-validation on the benchmark, dropping the `low`
+reactions of `gpt-5-mini` removed 41% of its wrong reactions at the cost of 5% of its correct ones (69% and
+5% with `gemini-3.7-flash` as checker). For `gemini-3.7-flash` outputs, whose remaining errors are subtler,
+dropping `low` hardly changed the F1 score, so use the level as a flag there.
+
+Notes:
+* A checker needs a model calibrated on its own answers, because different LLMs answer the same questions
+  with different strictness. Calibrated checkers: `gemini-3.7-flash` and `gpt-5-mini`. Any other checker is
+  not called; the deterministic score is used and `confidence_summary['warnings']` says so.
+* The scores are calibrated on outputs of `gemini-3.7-flash`, `gpt-5-mini` and `gpt-5.6-luna`. Outputs of
+  other extraction models are scored too, with a warning that the scores are less reliable.
+* The models are pickled with scikit-learn 1.7.1 (pinned in `requirements.txt`). If scoring fails for any
+  reason, the extraction result is returned unchanged with `confidence_summary['error']`.
+* With an `artifacts` dict, `artifacts['confidence']` keeps the features, the scores and the checker's raw
+  reply.
+
 #### Option B: ChemEagle with a local model (vLLM)
 
 The same `ChemEagle` entry point, pointed at a local server instead of a hosted API: vLLM speaks the
@@ -275,6 +340,9 @@ Fixed some output bugs.
 
 #### Sep 16 Update: 
 Any OpenAI-compatible model can now be used (a hosted API, a gateway, or a local vLLM server), and the default model is now `gemini-3.7-flash` instead of Azure OpenAI. The molecule agent corrects its vision output through an applied edit plan, unreadable SMILES of drawn catalysts and reagents are repaired.
+
+#### Oct 10 Update: 
+Every result now carries a calibrated confidence score per reaction (see [Confidence scores](#confidence-scores)): on by default, from deterministic features at no API cost, optionally sharpened by a checker LLM (`confidence_llm=True`). The action observer (`use_action_observer=True`, still off by default) now checks each agent against its own checklist, reports structured issues, and may not edit the main body of a molecule (`OBSERVER_MAIN_BODY_LOCK=0` lifts that rule).
 
 ### 🐍 Programmatic access: ChemEAGLE API & Python SDK (Testing)
 

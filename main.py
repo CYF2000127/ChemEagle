@@ -21,8 +21,9 @@ from get_R_group_sub_agent import (process_reaction_image_with_product_variant_R
                                    process_reaction_image_with_table_R_group,
                                    get_full_reaction_template, get_multi_molecular_full,
                                    peek_cached_multi_molecular, drawn_condition_structures)
-from get_observer import action_observer_agent, plan_observer_agent
+from get_observer import action_observer_agent, plan_observer_agent, observer_note
 from get_text_agent import text_extraction_agent
+import get_confidence as confidence
 import llm_client as llm
 import traceback
 from chemietoolkit.helper import (_clean_agent_name, _parse_planner_output, _resolve_ordered_agents,
@@ -81,6 +82,9 @@ def ChemEagle(
     use_plan_observer: bool = False,
     use_action_observer: bool = False,
     use_network: Optional[bool] = None,
+    use_confidence: Optional[bool] = None,
+    confidence_llm: Optional[bool] = None,
+    confidence_checker: Optional[str] = None,
     artifacts: Optional[dict] = None,
 ) -> dict:
     """ChemEagle over any OpenAI-compatible endpoint (replaces the deprecated
@@ -102,9 +106,74 @@ def ChemEagle(
             whatever the CHEMEAGLE_NETWORK / CHEMEAGLE_OFFLINE environment says,
             and the network is on when neither is set. Structures the figure draws
             are read by the recogniser and never depend on this.
+        use_confidence: score every extracted reaction after the final synthesis
+            (get_confidence.py). Each reaction gets ``confidence`` = {score, level, flags,
+            checker_note}; the output gets a ``confidence_summary``. score is the calibrated
+            probability that the reaction is fully correct, level is high (>= 0.85), medium
+            (0.5 to 0.85) or low (< 0.5). Nothing is removed from the output, and a scoring
+            error never costs the extraction. None (default) reads CHEMEAGLE_CONFIDENCE; on
+            when it is unset.
+        confidence_llm: whether the score also uses a checker LLM, which sees the figure and
+            the extracted reactions once and answers fixed yes / no / unsure questions (one
+            extra call per figure). False scores from the deterministic features alone, at no
+            API cost. None (default) reads CHEMEAGLE_CONFIDENCE_LLM; off when it is unset. Only
+            used when use_confidence is on.
+        confidence_checker: the checker model. None (default) reads
+            CHEMEAGLE_CONFIDENCE_CHECKER, else uses the extraction model (model_name). Only
+            checkers with a calibrated model in confidence_models/ (gemini-3.7-flash,
+            gpt-5-mini) are called; any other falls back to the deterministic score with a
+            warning in confidence_summary.
         artifacts: optional dict that receives the planner output, the executed agents
-            with their results, failures and the raw final reply, for evaluation.
+            with their results, failures and the raw final reply, for evaluation. With the
+            scorer on it also receives ``confidence`` (features, scores, the checker's raw reply).
     """
+    use_confidence = confidence.env_switch(use_confidence, "CHEMEAGLE_CONFIDENCE", True)
+    run_kwargs = dict(model_name=model_name, base_url=base_url, api_key=api_key,
+                      use_plan_observer=use_plan_observer, use_action_observer=use_action_observer,
+                      use_network=use_network)
+    if not use_confidence:
+        return _run_chemeagle(image_path, artifacts=artifacts, **run_kwargs)
+
+    art = artifacts if artifacts is not None else {}
+    with confidence.capture_log() as log:      # three features come from the run log
+        output = _run_chemeagle(image_path, artifacts=art, **run_kwargs)
+    use_llm = confidence.env_switch(confidence_llm, "CHEMEAGLE_CONFIDENCE_LLM", False)
+    extraction_model = llm.resolve_model(model_name)
+    checker = confidence_checker or os.getenv("CHEMEAGLE_CONFIDENCE_CHECKER") or extraction_model
+    try:
+        output = confidence.attach_confidence(
+            output, image_path, art, "".join(log),
+            model_name=extraction_model, use_llm=use_llm, checker_model=checker,
+            base_url=llm.resolve_base_url(base_url), api_key=llm.resolve_key(api_key))
+    except Exception as exc:
+        # the scorer is an add-on: its failure must not cost the extraction
+        print(f"WARNING [confidence]: scoring failed, output returned without scores: {exc!r}")
+        traceback.print_exc()
+        if isinstance(output, dict):
+            for rx in output.get("reactions") or []:
+                if isinstance(rx, dict):
+                    rx.pop("confidence", None)
+            output["confidence_summary"] = {"scorer": None, "error": f"{type(exc).__name__}: {exc}"[:300]}
+        return output
+    summary = output.get("confidence_summary") or {} if isinstance(output, dict) else {}
+    print(f"[confidence] {summary.get('scorer')}: {summary.get('levels')}"
+          + "".join(f"; WARNING {w}" for w in summary.get("warnings") or []))
+    return output
+
+
+def _run_chemeagle(
+    image_path: str,
+    *,
+    model_name: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    use_plan_observer: bool = False,
+    use_action_observer: bool = False,
+    use_network: Optional[bool] = None,
+    artifacts: Optional[dict] = None,
+) -> dict:
+    """The extraction itself (planner, agents, final synthesis, post-verification);
+    ChemEagle adds the optional confidence scorer around it. Arguments as in ChemEagle."""
 
     if use_network is not None:
         set_network_enabled(use_network)
@@ -213,16 +282,22 @@ def ChemEagle(
 
     def _observe_and_retry(observed_name, observed_result, rerun):
         """Per-agent Action Observer check; at most one re-execution on redo.
-        The observer's diagnosis is collected and forwarded to the final
-        synthesis step."""
-        check = action_observer_agent(
-            image_path, [{"name": observed_name, "result": observed_result}],
-            model_name=model_name, base_url=base_url, api_key=api_key)
+        The observer's issues are forwarded to the final synthesis step whether
+        or not it asked for a redo; after a rerun the new result is checked
+        again, so the forwarded issues describe the result that is kept."""
+        def _check(result):
+            return action_observer_agent(
+                image_path, [{"name": observed_name, "result": result}],
+                model_name=model_name, base_url=base_url, api_key=api_key)
+        check = _check(observed_result)
         if check.get("redo"):
-            reason = check.get("reason", "")
-            observer_notes.append(f"{observed_name}: {reason}" if reason else observed_name)
-            print(f"[dispatch] Action observer requested redo for {observed_name}: {reason}")
+            print(f"[dispatch] Action observer requested redo for {observed_name}: {check.get('reason', '')}")
             observed_result = rerun()
+            check = _check(observed_result)
+        note = observer_note(observed_name, check)
+        if note:
+            observer_notes.append(note)
+            print(f"[dispatch] Action observer: {note}")
         return observed_result
 
     for idx, agent_name in enumerate(ordered_agents):
@@ -371,7 +446,7 @@ def ChemEagle(
     if observer_reason:
         messages_list.append({
             'role': 'user',
-            'content': f"Note: the previous execution had potential errors: {observer_reason}. Please review the results carefully.",
+            'content': f"Note: checks of the agent runs above reported possible problems: {observer_reason}. Verify each point against the figure, correct the agent output where the point holds, and ignore points the figure contradicts.",
         })
 
     response, _ = llm.final_json_call(
@@ -612,15 +687,19 @@ def ChemEagle_azure(
 
     def _observe_and_retry_azure(observed_name, observed_result, rerun):
         """Per-agent Action Observer check; at most one re-execution on redo.
-        The observer's diagnosis is collected and forwarded to the final
-        synthesis step."""
-        check = action_observer_agent_azure(
-            image_path, [{"name": observed_name, "result": observed_result}])
+        Same forwarding rules as in ChemEagle."""
+        def _check(result):
+            return action_observer_agent_azure(
+                image_path, [{"name": observed_name, "result": result}])
+        check = _check(observed_result)
         if check.get("redo"):
-            reason = check.get("reason", "")
-            observer_notes.append(f"{observed_name}: {reason}" if reason else observed_name)
-            print(f"[D] Action observer requested redo for {observed_name}: {reason}")
+            print(f"[D] Action observer requested redo for {observed_name}: {check.get('reason', '')}")
             observed_result = rerun()
+            check = _check(observed_result)
+        note = observer_note(observed_name, check)
+        if note:
+            observer_notes.append(note)
+            print(f"[D] Action observer: {note}")
         return observed_result
 
     for idx, agent_name in enumerate(ordered_agents):
@@ -739,7 +818,7 @@ def ChemEagle_azure(
     if observer_reason:
         messages_list.append({
             'role': 'user',
-            'content': f"Note: the previous execution had potential errors: {observer_reason}. Please review the results carefully.",
+            'content': f"Note: checks of the agent runs above reported possible problems: {observer_reason}. Verify each point against the figure, correct the agent output where the point holds, and ignore points the figure contradicts.",
         })
 
     response = client.chat.completions.create(
