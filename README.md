@@ -354,7 +354,7 @@ When the input is a multimodal chemical reaction graphic:
 <div align="center",width="100">
 </div> 
 
-The output dictionary should be a complete machine-readable reaction list with reactant SMILES, product SMILES, detailed conditions and additional information for every reaction in the graphics. For example:
+The output dictionary should be a complete machine-readable reaction list with reactant SMILES, product SMILES, detailed conditions and additional information for every reaction in the graphics, plus a confidence score for each reaction (see [Confidence scores](#confidence-scores)). For example:
 
 ``` 
 {"reactions":[
@@ -362,18 +362,21 @@ The output dictionary should be a complete machine-readable reaction list with r
 "conditions":[{"role":"reagent","text":"10 mol% B17 or B27","smiles":"C(c1ccccc1)[N+]1=CN2[C@H](C(O[Si](C)(C)C)(c3ccccc3)c3ccccc3)CCC2=N1.F[B-](F)(F)F","label":"B17"},
 {"role":"reagent","text":"10 mol% B17 or B27","smiles":"CC(C)c1ccccc1[N+]1=CN2[C@H](C(O)(c3cc(C(F)(F)F)cc(C(F)(F)F)c3)c3cc(C(F)(F)F)cc(C(F)(F)F)c3)CCC2=N1.F[B-](F)(F)F","label":"B27"},
 {"role":"reagent","text":"10 mol% Cs2CO3","smiles":"[Cs+].[Cs+].[O-]C(=O)[O-]"},{"role":"solvent","text":"PhMe","smiles":"Cc1ccccc1"},{"role":"temperature","text":"rt"},{"role":"yield","text":"38 - 78%"}],
-"products":[{"smiles":"[Ar]C1([R])O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O","label":"3"}]},
+"products":[{"smiles":"[Ar]C1([R])O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O","label":"3"}],
+"confidence":{"score":0.31,"level":"low","flags":["unresolved_placeholder"]}},
 
 {"reaction_id":"1_1","reactants":[{"smiles":"CCC(=C=O)c1ccccc1","label":"1a"},{"smiles":"Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1","label":"2a"}],
 "conditions":[{"role":"reagent","text":"10 mol% B17 or B27","smiles":"C(c1ccccc1)[N+]1=CN2[C@H](C(O[Si](C)(C)C)(c3ccccc3)c3ccccc3)CCC2=N1.F[B-](F)(F)F","label":"B17"},
 {"role":"reagent","text":"10 mol% B17 or B27","smiles":"CC(C)c1ccccc1[N+]1=CN2[C@H](C(O)(c3cc(C(F)(F)F)cc(C(F)(F)F)c3)c3cc(C(F)(F)F)cc(C(F)(F)F)c3)CCC2=N1.F[B-](F)(F)F","label":"B27"},
 {"role":"reagent","text":"10 mol% Cs2CO3","smiles":"[Cs+].[Cs+].[O-]C(=O)[O-]"},{"role":"solvent","text":"PhMe","smiles":"Cc1ccccc1"},{"role":"temperature","text":"rt"},{"role":"yield","text":"71%"}],
 "products":[{"smiles":"CC[C@@]1(c2ccccc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O","label":"3a"}],
-"additional_info":[{"text":"14:1 dr, 91% ee"}]},
+"additional_info":[{"text":"14:1 dr, 91% ee"}],
+"confidence":{"score":0.91,"level":"high","flags":[]}},
 
 {"reaction_id":"2_1",... ###More detailed reactions}
 ],
-"text_extraction":"..."
+"text_extraction":"...",
+"confidence_summary":{"scorer":"deterministic","checker_model":null,"output_reactions":...,"levels":{"high":...,"medium":...,"low":...},"low_confidence_reactions":["0_1",...],"warnings":[]}
 }
 ```
 Note: Due to the characteristics of LLMs, slight variations in outputs may occur.
