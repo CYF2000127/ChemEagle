@@ -147,10 +147,10 @@ vision model and has to support JSON / structured outputs, which vLLM provides.
 ##### Prerequisites
 - NVIDIA GPU with CUDA support (recommended)
 - Docker installed (for Windows vLLM deployment)
-- Download the Qwen3-VL or Qwen3.5 series model weights (We provided `Qwen3-VL-32B-Instruct` and `Qwen3-VL-32B-Instruct-AWQ`) from [HuggingFace](https://huggingface.co/CYF200127/Qwen3-VL-32B-Instruct).
+- Download the Qwen3-VL, Qwen3.5 or Qwen3.8 series model weights (We provided `Qwen3-VL-32B-Instruct` and `Qwen3-VL-32B-Instruct-AWQ`) from [HuggingFace](https://huggingface.co/CYF200127/Qwen3-VL-32B-Instruct).
 
 ##### Hardware Requirements (VRAM)
-Depending on the model size and architecture (Dense vs. MoE), the VRAM requirements vary significantly. Below are the estimated minimum physical VRAM requirements for the Qwen3-VL and Qwen3.5 series, including both BF16 and FP8/INT8 quantized versions. 
+Depending on the model size and architecture (Dense vs. MoE), the VRAM requirements vary significantly. Below are the estimated minimum physical VRAM requirements for the Qwen3-VL, Qwen3.5 and Qwen3.8 series, including both BF16 and FP8/INT8 quantized versions. 
 
 ###### Qwen3-VL Series
 
@@ -175,6 +175,15 @@ Depending on the model size and architecture (Dense vs. MoE), the VRAM requireme
 | **Qwen3.5-122B-A10B** | MoE | ~245-260 GB | **~122-135 GB** |
 | **Qwen3.5-397B-A17B** | MoE | ~800-810 GB | **~400-430 GB** |
 
+###### Qwen3.8 Series
+
+| Model Version | Architecture | BF16 VRAM | FP8/INT8 VRAM |
+| :--- | :--- | :--- | :--- |
+| **Qwen3.8-27B** | Dense | ~54-60 GB | **~27-32 GB** |
+| **Qwen3.8-Flash-Next** (125B-A6B, plus a 51B n-gram embedding) | MoE | ~360-380 GB | **~180-195 GB** |
+
+*Qwen3.8-27B was tested with ChemEagle; on a 32 GB Blackwell card (RTX 5090) the 4-bit `unsloth/Qwen3.8-27B-NVFP4` (~23 GB) runs with `--enforce-eager` and a context of about 20k tokens. Qwen3.8-Flash-Next has not been tested with ChemEagle yet, and its figures are estimated from the weight size. Qwen3.8-2.4T-A95B is text only and cannot read the figures.*
+
 *Note 1: Vision-Language models require additional VRAM for vision encoders and high-resolution image context. The estimation includes basic KV Cache, but we recommend reserving an extra 2-4 GB for complex vision tasks.*
 *Note 2: For MoE models, all expert weights must be loaded into memory simultaneously. Therefore, their VRAM footprint depends on the total parameter count, not just the activated parameters.*
 
@@ -193,6 +202,19 @@ vllm serve /path/to/Qwen3-VL-32B-Instruct \
     --max-model-len 64000 \
     --limit-mm-per-prompt video=0
 conda activate chemeagle
+```
+
+For the Qwen3.8 series (tested with vLLM 0.27.1; Qwen3.8 needs transformers 5.8 or later), use its own reasoning and tool-call parsers:
+```
+vllm serve /path/to/Qwen3.8-27B \
+    --served-model-name qwen3.8-27b \
+    --port 8000 \
+    --trust-remote-code \
+    --reasoning-parser qwen3 \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder \
+    --max-model-len 64000 \
+    --limit-mm-per-prompt '{"video":0}'
 ```
 
 **For Windows (PowerShell):**
