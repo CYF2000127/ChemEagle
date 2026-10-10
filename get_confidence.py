@@ -396,9 +396,42 @@ def level_of(p):
     return next(name for cut, name in LEVELS if p >= cut)
 
 
-def _flags(det, ver):
+def _wild_products(rx):
+    return [m.get("smiles") for m in rx.get("products") or [] if isinstance(m, dict) and "*" in (m.get("smiles") or "")]
+
+
+def template_reactions(rxns):
+    """Indices of generic template reactions: a product still carries placeholders (R, Ar, X as *) and a
+    concrete product of another reaction in the same figure is an instance of it (placeholders match any
+    atom). Templates are part of the benchmark GT and score like other reactions; the flag only tells them
+    apart from concrete reactions, whose leftover placeholders are flagged unresolved_placeholder."""
+    params = Chem.AdjustQueryParameters()
+    params.makeDummiesQueries = True
+    params.adjustDegree = False
+    params.adjustRingCount = False
+    concrete = []
+    with BlockLogs():
+        for j, rx in enumerate(rxns):
+            for m in rx.get("products") or []:
+                s = m.get("smiles") if isinstance(m, dict) else None
+                if isinstance(s, str) and s and "*" not in s:
+                    pm = Chem.MolFromSmiles(s)
+                    if pm is not None:
+                        concrete.append((j, pm))
+        out = set()
+        for i, rx in enumerate(rxns):
+            queries = [Chem.AdjustQueryProperties(m, params) for m in
+                       (Chem.MolFromSmiles(s) for s in _wild_products(rx)) if m is not None]
+            if queries and any(j != i and pm.HasSubstructMatch(q) for j, pm in concrete for q in queries):
+                out.add(i)
+    return out
+
+
+def _flags(det, ver, template=False):
     out = []
-    if det["n_wild_reactant"] + det["n_wild_product"]:
+    if template:
+        out.append("template_reaction")
+    elif det["n_wild_reactant"] + det["n_wild_product"]:
         out.append("unresolved_placeholder")
     if det["n_invalid"] or det["n_missing_smiles"]:
         out.append("invalid_or_missing_smiles")
@@ -439,7 +472,8 @@ def attach_confidence(output, image_path, artifacts, log_text, *, model_name, us
     summary = {"scorer": "deterministic", "checker_model": None, "output_reactions": len(rxns)}
     record = {"model_name": model_name, "checker_model": None}
     if not rxns:
-        summary.update(levels={"high": 0, "medium": 0, "low": 0}, low_confidence_reactions=[], warnings=warnings)
+        summary.update(levels={"high": 0, "medium": 0, "low": 0}, low_confidence_reactions=[],
+                       template_reactions=[], warnings=warnings)
         output["confidence_summary"] = summary
         artifacts["confidence"] = record
         return output
@@ -473,10 +507,11 @@ def attach_confidence(output, image_path, artifacts, log_text, *, model_name, us
 
     counts = {"high": 0, "medium": 0, "low": 0}
     low_ids = []
+    templates = template_reactions(rxns)
     for i, rx in enumerate(rxns):
         lv = level_of(float(p[i]))
         counts[lv] += 1
-        conf = {"score": round(float(p[i]), 3), "level": lv, "flags": _flags(det[i], ver[i] if ver else None)}
+        conf = {"score": round(float(p[i]), 3), "level": lv, "flags": _flags(det[i], ver[i] if ver else None, i in templates)}
         note = str((by_id.get(i) or {}).get("problem") or "").strip()
         if note:
             conf["checker_note"] = note
@@ -485,7 +520,8 @@ def attach_confidence(output, image_path, artifacts, log_text, *, model_name, us
             low_ids.append(rx.get("reaction_id", str(i)))
     summary.update(scorer="deterministic+checker" if ver is not None else "deterministic",
                    checker_model=checker_model if ver is not None else None,
-                   levels=counts, low_confidence_reactions=low_ids)
+                   levels=counts, low_confidence_reactions=low_ids,
+                   template_reactions=[rxns[i].get("reaction_id", str(i)) for i in sorted(templates)])
     if parsed is not None:
         summary["expected_reactions_by_checker"] = parsed.get("expected_reactions")
         summary["missing_by_checker"] = parsed.get("missing") or []

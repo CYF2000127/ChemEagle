@@ -133,7 +133,10 @@ print(results['reactions'][0]['confidence'])
 ```
 `score` is the estimated probability that the reaction is correct, and `level` is `high` (≥ 0.85), `medium`
 (0.5 to 0.85) or `low` (< 0.5). Nothing is removed from the output. Set `confidence_llm=True` to let an LLM
-check the output as well.
+check the output as well. The generic template of a scheme (R, Ar or X left as placeholders, with other
+reactions of the figure as its instances) is flagged `template_reaction` and listed in
+`confidence_summary['template_reactions']`, so it can be told apart from the concrete reactions; it is scored
+like any other reaction.
 
 #### Option B: ChemEagle with a local model (vLLM)
 
@@ -363,7 +366,7 @@ The output dictionary should be a complete machine-readable reaction list with r
 {"role":"reagent","text":"10 mol% B17 or B27","smiles":"CC(C)c1ccccc1[N+]1=CN2[C@H](C(O)(c3cc(C(F)(F)F)cc(C(F)(F)F)c3)c3cc(C(F)(F)F)cc(C(F)(F)F)c3)CCC2=N1.F[B-](F)(F)F","label":"B27"},
 {"role":"reagent","text":"10 mol% Cs2CO3","smiles":"[Cs+].[Cs+].[O-]C(=O)[O-]"},{"role":"solvent","text":"PhMe","smiles":"Cc1ccccc1"},{"role":"temperature","text":"rt"},{"role":"yield","text":"38 - 78%"}],
 "products":[{"smiles":"[Ar]C1([R])O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O","label":"3"}],
-"confidence":{"score":0.31,"level":"low","flags":["unresolved_placeholder"]}},
+"confidence":{"score":0.88,"level":"high","flags":["template_reaction"]}},
 
 {"reaction_id":"1_1","reactants":[{"smiles":"CCC(=C=O)c1ccccc1","label":"1a"},{"smiles":"Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1","label":"2a"}],
 "conditions":[{"role":"reagent","text":"10 mol% B17 or B27","smiles":"C(c1ccccc1)[N+]1=CN2[C@H](C(O[Si](C)(C)C)(c3ccccc3)c3ccccc3)CCC2=N1.F[B-](F)(F)F","label":"B17"},
@@ -376,7 +379,7 @@ The output dictionary should be a complete machine-readable reaction list with r
 {"reaction_id":"2_1",... ###More detailed reactions}
 ],
 "text_extraction":"...",
-"confidence_summary":{"scorer":"deterministic","checker_model":null,"output_reactions":...,"levels":{"high":...,"medium":...,"low":...},"low_confidence_reactions":["0_1",...],"warnings":[]}
+"confidence_summary":{"scorer":"deterministic","checker_model":null,"output_reactions":...,"levels":{"high":...,"medium":...,"low":...},"low_confidence_reactions":[...],"template_reactions":["0_1"],"warnings":[]}
 }
 ```
 Note: Due to the characteristics of LLMs, slight variations in outputs may occur.
