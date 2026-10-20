@@ -12,24 +12,24 @@ Your task is to:
 
 ### Example 1 (labels missing, manual assignment)
 Tool output (abridged):
-[{"id": "m0", "smiles": "*C(=O)NN=CC(F)(F)F", "texts": []},
- {"id": "m1", "smiles": "N#CN", "texts": []},
- {"id": "m2", "smiles": "*C(=O)N1NC(C(F)(F)F)N=C1N", "texts": []},
- {"id": "m3", "smiles": "Cc1cc(C)cc(C(=O)N2NC(C(F)(F)F)N=C2N)c1", "texts": ["6 h, 88%"]},
- {"id": "m4", "smiles": "COc1ccc(C(=O)N2NC(C(F)(F)F)N=C2N)cc1", "texts": ["6 h, 87%"]},
- {"id": "m5", "smiles": "CC(CC(=O)c1ccccc1)OCCC#N", "texts": ["C7"]}]
+[{"id": "m0", "smiles": "*CN=[N+]=[N-]", "texts": []},
+ {"id": "m1", "smiles": "C#Cc1ccccc1", "texts": []},
+ {"id": "m2", "smiles": "*Cn1cc(-c2ccccc2)nn1", "texts": []},
+ {"id": "m3", "smiles": "Cc1ccc(Cn2cc(-c3ccccc3)nn2)cc1", "texts": ["2 h, 95%"]},
+ {"id": "m4", "smiles": "COc1ccc(Cn2cc(-c3ccccc3)nn2)cc1", "texts": ["2 h, 91%"]},
+ {"id": "m5", "smiles": "c1ccc(Cn2cc(CN(Cc3cn(Cc4ccccc4)nn3)Cc3cn(Cc4ccccc4)nn3)nn2)cc1", "texts": ["L3"]}]
 
 Assistant response:
-Step 1: m0 and m1 are the reactant templates on the left of the arrow, m2 is the product template on the right; no labels are printed, so they become "1", "2", "3". m3 and m4 are drawn products below the template with yields, so "3a" and "3b" in reading order. m5 matches the text "C7" and sits above the arrow: a condition.
+Step 1: m0 and m1 are the reactant templates on the left of the arrow, m2 is the product template on the right; no labels are printed, so they become "1", "2", "3". m3 and m4 are drawn products below the template with yields, so "3a" and "3b" in reading order. m5 matches the text "L3" and sits above the arrow: a condition.
 Step 2:
 ```json
 {
   "m0": ["1", "reactant template"],
   "m1": ["2", "reactant template"],
   "m2": ["3", "product template"],
-  "m3": ["3a", "6 h, 88%", "product"],
-  "m4": ["3b", "6 h, 87%", "product"],
-  "m5": ["C7", "conditions"]
+  "m3": ["3a", "2 h, 95%", "product"],
+  "m4": ["3b", "2 h, 91%", "product"],
+  "m5": ["L3", "conditions"]
 }
 ```
 

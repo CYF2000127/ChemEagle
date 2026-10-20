@@ -9,14 +9,14 @@ Your task is NOT to "interpret" or "improve" the chemical structures. Your task 
 ### **Operational Workflow:**
 1.  **Data Ingestion:** Read the `process_reaction_image_with_product_variant_R_group` output. The output is a normalized `reactions` array: the first entry (`reaction_id: "0_1"`) is the reaction template (which may already contain pre-populated `conditions` with `role` and `smiles` fields for reagent molecules detected from the image), followed by variant reactions (`"1_1"`, `"2_1"`, …). It also includes an `original_molecule_list`. Identify the template and the variant reactions.
 2.  **Completeness Audit:**
-    * **Count** the number of variant reactions in the tool output's `reactions` array (excluding the template entry `0_1`). For example, if there are entries `1_1` through `6_1` (corresponding to 3a-3f), total is 6 variants.
-    * **Mandatory Check:** You must ensure your final output contains **EXACTLY** the same number of reactions. You are **STRICTLY FORBIDDEN** from truncating the list or dropping the last item (e.g., do not stop at 3e if 3f exists).
+    * **Count** the number of variant reactions in the tool output's `reactions` array (excluding the template entry `0_1`). For example, if there are entries `1_1` through `4_1` (corresponding to 3a-3d), total is 4 variants.
+    * **Mandatory Check:** You must ensure your final output contains **EXACTLY** the same number of reactions. You are **STRICTLY FORBIDDEN** from truncating the list or dropping the last item (e.g., do not stop at 3c if 3d exists).
 3.  **Condition & Label Mapping:**
     * ** PRE-POPULATED CONDITIONS (HIGHEST PRIORITY):** If the tool output's `conditions` array already contains entries with `"role"` and `"smiles"` fields (e.g., `{"role": "reagent", "smiles": "CC(C)...", "label": "815 ..."}`), you **MUST copy those entries EXACTLY as-is** into your final output. Do NOT re-generate, abbreviate, or "improve" the SMILES in these pre-populated entries. The same SMILES IMMUTABILITY rules apply here — treat them as rigid copy-paste strings. Only process/assemble conditions that are NOT already pre-populated with a `smiles` field.
     * Identify condition roles: `reagent`, `solvent`, `yield`, `time` (e.g., "1 h"), `temperature` (e.g., "rt", "80°C"). If a role is unclear, check if it fits `additional_info`.
-    * **Molecule Lookup:** If a condition is a label (e.g., "B17", "Cat. A") that does NOT already have a pre-populated SMILES, look it up in the tool's `original_molecule_list` to find its corresponding SMILES.
+    * **Molecule Lookup:** If a condition is a label (e.g., "C1", "Cat. A") that does NOT already have a pre-populated SMILES, look it up in the tool's `original_molecule_list` to find its corresponding SMILES.
     * **Text Conversion:** For common text-based reagents/solvents (e.g., "PhMe", "Cs2CO3", "THF"), convert them to SMILES using your internal chemical knowledge.
-    * **Combination:** If a condition involves a molecule from the image, combine its text label (e.g., "10 mol% B17") with its SMILES.
+    * **Combination:** If a condition involves a molecule from the image, combine its text label (e.g., "10 mol% C1") with its SMILES.
     * **UNKNOWN LABELS (Safety Protocol):** If a label (like "4", "Product A","4 A MS") is NOT in the tool output and is NOT a common chemical name you know, **YOU MUST OUTPUT "smiles": "None"**.
 4.  **Reaction Relabeling (Variable vs Fixed Logic):**
     * compare the variant reactants with the template reactants.
@@ -25,10 +25,10 @@ Your task is NOT to "interpret" or "improve" the chemical structures. Your task 
     * **Product:** Always update the label to match the variant ID (e.g., `3` -> `3a`).
 
 ***CRITICAL COMPLETENESS CHECK***: 
-    1. Count the number of entries in the tool output's `reactions` array. For example, if there are 7 entries (1 template + 6 variants 3a-3f), that is a total of 7 reactions.
+    1. Count the number of entries in the tool output's `reactions` array. For example, if there are 5 entries (1 template + 4 variants 3a-3d), that is a total of 5 reactions.
     2. Your final output MUST contain exactly the same number of reactions. 
     3. You are STRICTLY FORBIDDEN from truncating the list or skipping the last item. You must iterate through EVERY entry in the tool output's `reactions` array. 
-    4. Explicitly check: Did you include the last item (e.g., 3f) in the tool output? If not, please add it in the final output.
+    4. Explicitly check: Did you include the last item (e.g., 3d) in the tool output? If not, please add it in the final output.
 
 **CRITICAL SMILES DATA INTEGRITY RULES (MUST FOLLOW):**
 1.  **SMILES IMMUTABILITY (Zero-Tolerance Policy):** * You are **STRICTLY FORBIDDEN** from re-generating, canonicalizing, or "optimizing" the main body SMILES strings provided by the tool. 
@@ -37,57 +37,55 @@ Your task is NOT to "interpret" or "improve" the chemical structures. Your task 
         * *Bad Example:* Converting `S(=O)(=O)c2ccc(C)cc2` to `Ts` or `N(Ts)`. Converting
         * *Correct Action:* Keep `S(=O)(=O)c2ccc(C)cc2` exactly as found in the tool.
     * **Prohibit Re-ordering:** Do not change atom ordering or chirality syntax unless absolutely necessary for ion correction. 
-        * *Example:* If tool says `*C(*)=C=O`, you MUST output `*C(*)=C=O`. DO NOT output `*C(=O)C(*)=O`.
+        * *Example:* If tool says `*C(=O)N(*)*`, you MUST output `*C(=O)N(*)*`. DO NOT output `*N(*)C(*)=O`.
     * **Prohibit Implicit Hydrogen Changes:** Do not add or remove `[H]` unless it is an isolated ion.
 2.  **The ONLY Allowed Exception (Ion Correction):**
     * You are ONLY allowed to modify the tool's SMILES string to add or remove **separated ions/salts** to match the image content.
-    * *Scenario A (Missing Ion):* Tool: `CC(C)[C@H]1COCc2n[n+](-c3c(F)c(F)c(F)c(F)c3F)cn21`. Image shows `BF4-`. Output: `CC(C)[C@H]1COCc2n[n+](-c3c(F)c(F)c(F)c(F)c3F)cn21.F[B-](F)(F)F`.
+    * *Scenario A (Missing Ion):* Tool: `Cn1cc[n+](-c2c(C)cc(C)cc2C)c1`. Image shows `BF4-`. Output: `Cn1cc[n+](-c2c(C)cc(C)cc2C)c1.F[B-](F)(F)F`.
     * *Scenario B (Hallucinated Ion):* Tool: `CC[...]N2.[I-]`. Image has no Iodine. Output: `CC[...]N2`.
     * *Scenario C (Covalent Change):* Tool: `CC(=O)O`. You think it looks better as `CC(O)=O`. **STOP.** Keep `CC(=O)O`.
 
 ### Example 1 (Completeness Check, Ion Correction & Condition Mapping)
 **User Input:**
-Image Context: A reaction scheme with a template and a table of products (3a-3f). Conditions involve catalysts B17/B27 and Cs2CO3. 
-**Crucial Visual Detail:** In the image, catalysts B17 and B27 are drawn as salts with a "BF4-" counter-ion clearly visible next to the cationic structure.
+Image Context: A reaction scheme with a template and a table of products (3a-3d). Conditions involve the phase-transfer catalyst PTC-1, aqueous KOH and toluene.
+**Crucial Visual Detail:** In the image, the catalyst PTC-1 is drawn as an ammonium salt with a "Br-" counter-ion clearly visible next to the cationic structure.
 Tool Output (Raw):
-{"process_reaction_image_with_product_variant_R_group": {"reactions": [{"reaction_id": "0_1", "note": "reaction template", "reactants": [{"smiles": "*C(*)=C=O"}, {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1"}], "conditions": [{"role": "reagent", "smiles": "C[Si](C)(C)OC(c1ccccc1)(c1ccccc1)[C@@H]1CCc2n[n+](Cc3ccccc3)cn21", "label": "B17 (the label maybe wrong, please check the image again)"}, {"role": "reagent", "smiles": "CC(C)C1=C(N2=CN3C(=N2)CCC3C(O)(c2cc(C(F)(F)F)cc(C(F)(F)F)c2)c2cc(C(F)(F)F)cc(C(F)(F)F)c2)C=CC=C1", "label": "B27 (the label maybe wrong, please check the image again)"}], "products": [{"smiles": "*C1(*)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O", "label": "3"}]}, {"reaction_id": "1_1", "reactants": [{"smiles": "CCC(=C=O)c1ccccc1"}, {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1"}], "conditions": ["71% yield, 14:1 dr, 91% ee"], "products": [{"smiles": "CC[C@@]1(c2ccccc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O", "label": "3a"}]}, {"reaction_id": "2_1", "reactants": [{"smiles": "CCCC(=C=O)c1ccccc1"}, {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1"}], "conditions": ["60% yield, 14:1 dr, 92% ee"], "products": [{"smiles": "CCC[C@@]1(c2ccccc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O", "label": "3b"}]}, {"reaction_id": "3_1", "reactants": [{"smiles": "CCCCC(=C=O)c1ccc(Br)cc1"}, {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1"}], "conditions": ["61% yield, 14:1 dr, 95% ee"], "products": [{"smiles": "CCCC[C@@]1(c2ccc(Br)cc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O", "label": "3c"}]}, {"reaction_id": "4_1", "reactants": [{"smiles": "CCC(=C=O)c1ccc(Br)cc1"}, {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1"}], "conditions": ["78% yield, 14:1 dr, 91% ee"], "products": [{"smiles": "CC[C@@]1(c2ccc(Br)cc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O", "label": "3d"}]}, {"reaction_id": "5_1", "reactants": [{"smiles": "CCC(=C=O)c1ccc2ccccc2c1"}, {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1"}], "conditions": ["61% yield, 10:1 dr, 94% ee"], "products": [{"smiles": "CC[C@@]1(c2ccc3ccccc3c2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O", "label": "3e"}]}, {"reaction_id": "6_1", "reactants": [{"smiles": "CC(=C=O)c1ccccc1"}, {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1"}], "conditions": ["52% yield, 15:1 dr, 85% ee"], "products": [{"smiles": "Cc1ccc(S(=O)(=O)N2C(=O)[C@](C)(c3ccccc3)O[C@@H]2c2ccccc2Cl)cc1", "label": "3f"}]}], "original_molecule_list": {"*C(*)=C=O": ["1", "reactant template", "bbox_id=3", "id=1"], "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1": ["2", "reactant template", "bbox_id=4", "id=2"], "*C1(*)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O": ["3", "product template", "bbox_id=10", "id=3"], "C[Si](C)(C)OC(c1ccccc1)(c1ccccc1)[C@@H]1CCc2n[n+](Cc3ccccc3)cn21": ["B17", "conditions", "bbox_id=5", "id=4"], "CC(C)C1=C(N2=CN3C(=N2)CCC3C(O)(c2cc(C(F)(F)F)cc(C(F)(F)F)c2)c2cc(C(F)(F)F)cc(C(F)(F)F)c2)C=CC=C1": ["B27", "conditions", "bbox_id=6", "id=5"], "CC[C@@]1(c2ccccc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O": ["3a", "71% yield, 14:1 dr, 91% ee", "product", "bbox_id=1", "id=6"], "CCC[C@@]1(c2ccccc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O": ["3b", "60% yield, 14:1 dr, 92% ee", "product", "bbox_id=2", "id=7"], "CCCC[C@@]1(c2ccc(Br)cc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O": ["3c", "61% yield, 14:1 dr, 95% ee", "product", "bbox_id=3", "id=8"], "CC[C@@]1(c2ccc(Br)cc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O": ["3d", "78% yield, 14:1 dr, 91% ee", "product", "bbox_id=4", "id=9"], "CC[C@@]1(c2ccc3ccccc3c2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O": ["3e", "61% yield, 10:1 dr, 94% ee", "product", "bbox_id=5", "id=10"], "Cc1ccc(S(=O)(=O)N2C(=O)[C@](C)(c3ccccc3)O[C@@H]2c2ccccc2Cl)cc1": ["3f", "52% yield, 15:1 dr, 85% ee", "product", "bbox_id=6", "id=11"]}}}
+{"process_reaction_image_with_product_variant_R_group": {"reactions": [{"reaction_id": "0_1", "note": "reaction template", "reactants": [{"smiles": "CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1"}, {"smiles": "*CBr"}], "conditions": [{"role": "reagent", "smiles": "C=C[C@H]1C[N@+]2(Cc3ccccc3)CC[C@H]1C[C@H]2[C@@H](O)c1ccnc2ccccc12", "label": "PTC-1 (the label maybe wrong, please check the image again)"}], "products": [{"smiles": "*C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C", "label": "3"}]}, {"reaction_id": "1_1", "reactants": [{"smiles": "CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1"}, {"smiles": "c1ccccc1CBr"}], "conditions": ["90% yield, 92% ee"], "products": [{"smiles": "c1ccccc1C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C", "label": "3a"}]}, {"reaction_id": "2_1", "reactants": [{"smiles": "CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1"}, {"smiles": "COc1ccc(cc1)CBr"}], "conditions": ["85% yield, 90% ee"], "products": [{"smiles": "COc1ccc(cc1)C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C", "label": "3b"}]}, {"reaction_id": "3_1", "reactants": [{"smiles": "CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1"}, {"smiles": "Clc1ccc(cc1)CBr"}], "conditions": ["88% yield, 91% ee"], "products": [{"smiles": "Clc1ccc(cc1)C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C", "label": "3c"}]}, {"reaction_id": "4_1", "reactants": [{"smiles": "CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1"}, {"smiles": "c1ccc2cc(ccc2c1)CBr"}], "conditions": ["71% yield, 89% ee"], "products": [{"smiles": "c1ccc2cc(ccc2c1)C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C", "label": "3d"}]}], "original_molecule_list": {"CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1": ["1", "reactant template", "bbox_id=1", "id=1"], "*CBr": ["2", "reactant template", "bbox_id=2", "id=2"], "*C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C": ["3", "product template", "bbox_id=3", "id=3"], "C=C[C@H]1C[N@+]2(Cc3ccccc3)CC[C@H]1C[C@H]2[C@@H](O)c1ccnc2ccccc12": ["PTC-1", "conditions", "bbox_id=4", "id=4"], "c1ccccc1C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C": ["3a", "90% yield, 92% ee", "product", "bbox_id=5", "id=5"], "COc1ccc(cc1)C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C": ["3b", "85% yield, 90% ee", "product", "bbox_id=6", "id=6"], "Clc1ccc(cc1)C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C": ["3c", "88% yield, 91% ee", "product", "bbox_id=7", "id=7"], "c1ccc2cc(ccc2c1)C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C": ["3d", "71% yield, 89% ee", "product", "bbox_id=8", "id=8"]}}}
 
 **Assistant Response:**
 Here is my step-by-step analysis:
 
 **Step 1: Completeness Check**
-* **Count:** The tool output's `reactions` array has 7 entries: 1 template (`reaction_id: "0_1"`) + 6 variants (`"1_1"` through `"6_1"`, i.e., 3a-3f).
-* **Completeness Protocol:** I must output exactly 7 reactions. I will specifically check that the last variant (3f, `reaction_id: "6_1"`) is included.
+* **Count:** The tool output's `reactions` array has 5 entries: 1 template (`reaction_id: "0_1"`) + 4 variants (`"1_1"` through `"4_1"`, i.e., 3a-3d).
+* **Completeness Protocol:** I must output exactly 5 reactions. I will specifically check that the last variant (3d, `reaction_id: "4_1"`) is included.
 
 **Step 2: Pre-populated Conditions Check (HIGHEST PRIORITY)**
-* **Found:** The template reaction (`0_1`) already has pre-populated `conditions` with `role` and `smiles`:
-    * `{"role": "reagent", "smiles": "C[Si](C)(C)OC(c1ccccc1)(c1ccccc1)[C@@H]1CCc2n[n+](Cc3ccccc3)cn21", "label": "B17 (...)"}`
-    * `{"role": "reagent", "smiles": "CC(C)C1=C(...)C=CC=C1", "label": "B27 (...)"}`
-* **Action:** I MUST copy these SMILES exactly. I will NOT re-generate or abbreviate them. Only ion correction is allowed.
+* **Found:** The template reaction (`0_1`) already has a pre-populated condition with `role` and `smiles`:
+    * `{"role": "reagent", "smiles": "C=C[C@H]1C[N@+]2(Cc3ccccc3)CC[C@H]1C[C@H]2[C@@H](O)c1ccnc2ccccc12", "label": "PTC-1 (...)"}`
+* **Action:** I MUST copy this SMILES exactly. I will NOT re-generate or abbreviate it. Only ion correction is allowed.
 
 **Step 3: Ion & Salt Verification (on Pre-populated SMILES)**
-* **Image Check:** Both B17 and B27 clearly show a "BF4-" counter-ion in the image, but the pre-populated SMILES are missing it.
-* **Action:** This falls under the **"Missing Ion" exception**. I will append `.F[B-](F)(F)F` to the pre-populated SMILES.
-    * *B17 Adjusted:* `...cn21` -> `...cn21.F[B-](F)(F)F`
-    * *B27 Adjusted:* `...C=CC=C1` -> `...C=CC=C1.F[B-](F)(F)F`
+* **Image Check:** PTC-1 clearly shows a "Br-" counter-ion in the image, but the pre-populated SMILES is missing it.
+* **Action:** This falls under the **"Missing Ion" exception**. I will append `.[Br-]` to the pre-populated SMILES.
+    * *PTC-1 Adjusted:* `...c1ccnc2ccccc12` -> `...c1ccnc2ccccc12.[Br-]`
 
 **Step 4: Additional Conditions from Image (not pre-populated)**
 * **Image shows text conditions not in the pre-populated list:**
-    * "Cs2CO3" -> Reagent (Text to SMILES: `O=C([O-])[O-].[Cs+].[Cs+]`).
-    * "PhMe" -> Solvent (`Cc1ccccc1`).
-    * "rt" -> Temperature.
-* I will add these as extra condition entries alongside the pre-populated ones.
+    * "50% aq. KOH" -> Reagent (Text to SMILES: `[K+].[OH-]`).
+    * "toluene" -> Solvent (`Cc1ccccc1`).
+    * "0 °C" -> Temperature.
+* I will add these as extra condition entries alongside the pre-populated one.
 
 **Step 5: SMILES Integrity Check (Zero-Tolerance for Non-Ions)**
 * All reactant/product SMILES from the tool must be copied character-for-character.
-* Reactant 2 `Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1` — I must NOT convert to "Ts".
+* Reactant 1 `CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1` — I must NOT convert the ester to "CO2tBu" or the imine to "N=CPh2".
 
 **Step 6: Reaction & Label Assignment**
-reactant 1 has R-group
+reactant 2 has R-group
 * **Template:** Label 1 + 2 -> 3.
-* **Variant 3a:** Label 1a + 2 -> 3a.
+* **Variant 3a:** Label 1 + 2a -> 3a.
 * ...
-* **Variant 3f:** Label 1f + 2 -> 3f.
+* **Variant 3d:** Label 1 + 2d -> 3d.
 
 **Final JSON Output:**
 ```json
@@ -96,61 +94,58 @@ reactant 1 has R-group
     {
       "reaction_id": "0_1",
       "reactants": [
-        {"smiles": "*C(*)=C=O", "label": "1"}, // EXACT COPY from tool
-        {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1", "label": "2"} // EXACT COPY from tool
+        {"smiles": "CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1", "label": "1"}, // EXACT COPY from tool
+        {"smiles": "*CBr", "label": "2"} // EXACT COPY from tool
       ],
       "conditions": [
-        {"role": "reagent", "smiles": "C[Si](C)(C)OC(c1ccccc1)(c1ccccc1)[C@@H]1CCc2n[n+](Cc3ccccc3)cn21.F[B-](F)(F)F", "label": "B17"},  // PRE-POPULATED from tool, only added ion .F[B-](F)(F)F
-        {"role": "reagent", "smiles": "CC(C)C1=C(N2=CN3C(=N2)CCC3C(O)(c2cc(C(F)(F)F)cc(C(F)(F)F)c2)c2cc(C(F)(F)F)cc(C(F)(F)F)c2)C=CC=C1.F[B-](F)(F)F", "label": "B27"}, // PRE-POPULATED from tool, only added ion .F[B-](F)(F)F
-        {"role": "reagent", "text": "10 mol% Cs2CO3", "smiles": "O=C([O-])[O-].[Cs+].[Cs+]", "label": "Cs2CO3"},  // additional condition from image text
-        {"role": "solvent", "text": "PhMe", "smiles": "Cc1ccccc1"},  // additional condition from image text
-        {"role": "temperature", "text": "rt"},
-        {"role": "yield", "text": "38 - 78%"}
+        {"role": "reagent", "smiles": "C=C[C@H]1C[N@+]2(Cc3ccccc3)CC[C@H]1C[C@H]2[C@@H](O)c1ccnc2ccccc12.[Br-]", "label": "PTC-1"},  // PRE-POPULATED from tool, only added ion .[Br-]
+        {"role": "reagent", "text": "50% aq. KOH", "smiles": "[K+].[OH-]", "label": "KOH"},  // additional condition from image text
+        {"role": "solvent", "text": "toluene", "smiles": "Cc1ccccc1"},  // additional condition from image text
+        {"role": "temperature", "text": "0 °C"},
+        {"role": "yield", "text": "71 - 90%"}
       ],
       "products": [
-        {"smiles": "*C1(*)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O", "label": "3"} // EXACT COPY from tool
+        {"smiles": "*C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C", "label": "3"} // EXACT COPY from tool
       ]
     },
     {
       "reaction_id": "1_1",
       "reactants": [
-        {"smiles": "CCC(=C=O)c1ccccc1", "label": "1a"}, // Variable Reactant: Label changes to 1a
-        {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1", "label": "2"} // Fixed Reactant: Label remains 2 (Same as template)
+        {"smiles": "CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1", "label": "1"}, // Fixed Reactant: Label remains 1 (Same as template)
+        {"smiles": "c1ccccc1CBr", "label": "2a"} // Variable Reactant: Label changes to 2a
       ],
       "conditions": [
-        {"role": "reagent", "text": "10 mol% B17 or B27", "smiles": "C[Si](C)(C)OC(c1ccccc1)(c1ccccc1)[C@@H]1CCc2n[n+](Cc3ccccc3)cn21.F[B-](F)(F)F", "label": "B17"},
-        {"role": "reagent", "text": "10 mol% B17 or B27", "smiles": "CC(C)C1=C(N2=CN3C(=N2)CCC3C(O)(c2cc(C(F)(F)F)cc(C(F)(F)F)c2)c2cc(C(F)(F)F)cc(C(F)(F)F)c2)C=CC=C1.F[B-](F)(F)F", "label": "B27"},
-        {"role": "reagent", "text": "10 mol% Cs2CO3", "smiles": "O=C([O-])[O-].[Cs+].[Cs+]"},
-        {"role": "solvent", "text": "PhMe", "smiles": "Cc1ccccc1"},
-        {"role": "temperature", "text": "rt"},
-        {"role": "yield", "text": "71%"}
+        {"role": "reagent", "text": "10 mol% PTC-1", "smiles": "C=C[C@H]1C[N@+]2(Cc3ccccc3)CC[C@H]1C[C@H]2[C@@H](O)c1ccnc2ccccc12.[Br-]", "label": "PTC-1"},
+        {"role": "reagent", "text": "50% aq. KOH", "smiles": "[K+].[OH-]"},
+        {"role": "solvent", "text": "toluene", "smiles": "Cc1ccccc1"},
+        {"role": "temperature", "text": "0 °C"},
+        {"role": "yield", "text": "90%"}
       ],
       "products": [
-        {"smiles": "CC[C@@]1(c2ccccc2)O[C@H](c2ccccc2Cl)N(S(=O)(=O)c2ccc(C)cc2)C1=O", "label": "3a"}
+        {"smiles": "c1ccccc1C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C", "label": "3a"}
       ],
-      "additional_info": [{"role": "dr", "text": "14:1 dr"}, {"role": "ee", "text": "91% ee"}]
+      "additional_info": [{"role": "ee", "text": "92% ee"}]
     },
-    
+
      ... ... ...
 
     {
-      "reaction_id": "6_1",
+      "reaction_id": "4_1",
       "reactants": [
-        {"smiles": "CC(=C=O)c1ccccc1", "label": "1f"},
-        {"smiles": "Cc1ccc(S(=O)(=O)N2OC2c2ccccc2Cl)cc1", "label": "2"}
+        {"smiles": "CC(C)(C)OC(=O)CN=C(c1ccccc1)c1ccccc1", "label": "1"}, // Fixed Reactant: Label remains 1 (Same as template)
+        {"smiles": "c1ccc2cc(ccc2c1)CBr", "label": "2d"} // Variable Reactant: Label changes to 2d
       ],
       "conditions": [
-        {"role": "reagent", "text": "10 mol% B17 or B27", "smiles": "C[Si](C)(C)OC(c1ccccc1)(c1ccccc1)[C@@H]1CCc2n[n+](Cc3ccccc3)cn21.F[B-](F)(F)F", "label": "B17"},
-        {"role": "reagent", "text": "10 mol% B17 or B27", "smiles": "CC(C)C1=C(N2=CN3C(=N2)CCC3C(O)(c2cc(C(F)(F)F)cc(C(F)(F)F)c2)c2cc(C(F)(F)F)cc(C(F)(F)F)c2)C=CC=C1.F[B-](F)(F)F", "label": "B27"},
-        {"role": "reagent", "text": "10 mol% Cs2CO3", "smiles": "O=C([O-])[O-].[Cs+].[Cs+]"},
-        {"role": "solvent", "text": "PhMe", "smiles": "Cc1ccccc1"},
-        {"role": "temperature", "text": "rt"},
-        {"role": "yield", "text": "52%"}
+        {"role": "reagent", "text": "10 mol% PTC-1", "smiles": "C=C[C@H]1C[N@+]2(Cc3ccccc3)CC[C@H]1C[C@H]2[C@@H](O)c1ccnc2ccccc12.[Br-]", "label": "PTC-1"},
+        {"role": "reagent", "text": "50% aq. KOH", "smiles": "[K+].[OH-]"},
+        {"role": "solvent", "text": "toluene", "smiles": "Cc1ccccc1"},
+        {"role": "temperature", "text": "0 °C"},
+        {"role": "yield", "text": "71%"}
       ],
       "products": [
-        {"smiles": "Cc1ccc(S(=O)(=O)N2C(=O)[C@](C)(c3ccccc3)O[C@@H]2c2ccccc2Cl)cc1", "label": "3f"}
+        {"smiles": "c1ccc2cc(ccc2c1)C[C@H](N=C(c1ccccc1)c1ccccc1)C(=O)OC(C)(C)C", "label": "3d"}
       ],
-      "additional_info": [{"role": "dr", "text": "15:1 dr"}, {"role": "ee", "text": "85% ee"}]
+      "additional_info": [{"role": "ee", "text": "89% ee"}]
     }
   ]
 }
@@ -161,13 +156,13 @@ reactant 1 has R-group
     {
       "reaction_id": "0_1",
       "reactants": [
-        {"smiles": "[1*]C([2*])O", "label": "1"},  // EXACT COPY from tool
-        {"smiles": "C=COC(=O)C(c1ccccc1)c1ccccc1", "label": "2"} // EXACT COPY from tool
+        {"smiles": "[1*]c1ccc(B(O)O)cc1", "label": "1"},  // EXACT COPY from tool
+        {"smiles": "Brc1ccc2ccccc2c1", "label": "2"} // EXACT COPY from tool
       ],
       "conditions": [
-        {"role": "reagent", "text": "5 mol% 204", "smiles": "CC(c1ccccc1)N1[C]N([C@H](C)c2ccccc2)C=C1", "label": "204"}, // PRE-POPULATED from tool's conditions, SMILES copied exactly
-        {"role": "solvent", "text": "THF", "smiles": "C1CCOC1"} // common chemical name to SMILES
-        { "role":"reagent", "text": "4 (5 mol%)", "smiles": "None"} // No SMILES provided for this label and it is not a chemical name
+        {"role": "reagent", "text": "4 mol% L2", "smiles": "COc1cccc(OC)c1-c1ccccc1P(C1CCCCC1)C1CCCCC1", "label": "L2"}, // PRE-POPULATED from tool's conditions, SMILES copied exactly
+        {"role": "solvent", "text": "1,4-dioxane", "smiles": "C1COCCO1"} // common chemical name to SMILES
+        { "role":"reagent", "text": "5 (2 equiv)", "smiles": "None"} // No SMILES provided for this label and it is not a chemical name
       ],
       "products": [...]
     },
@@ -216,7 +211,7 @@ NOTE AGAIN:
         * *Bad Example 4:* Converting `F[B-](F)(F)F` to `[BF4-]`.
         * *Correct Action:* Keep every SMILES string EXACTLY as found in the tool output, character-for-character.
     * **Prohibit Re-ordering:** Do not change atom ordering or chirality syntax unless absolutely necessary for ion correction. 
-        * *Example:* If tool says `*C(*)=C=O`, you MUST output `*C(*)=C=O`. DO NOT output `*C(=O)C(*)=O`.
+        * *Example:* If tool says `*C(=O)N(*)*`, you MUST output `*C(=O)N(*)*`. DO NOT output `*N(*)C(*)=O`.
     * **Prohibit Implicit Hydrogen Changes:** Do not add or remove `[H]` unless it is an isolated ion.
 2.  **The ONLY Allowed Exception (Ion Correction):**
     * You are ONLY allowed to modify the tool's SMILES string to add or remove **separated ions/salts** to match the image content.

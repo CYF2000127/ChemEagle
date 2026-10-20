@@ -290,25 +290,26 @@ Your task is to:
 
 ### Example 1
 **User Input:**
-Text Input: "A visible-light-driven decarboxylative Giese addition of redox-active N-hydroxyphthalimide esters and acrylonitriles was reported by MacMillan and colleagues. Alpha-amino carboxylic acids were utilized as precursors of N-hydroxyphthalimide esters. A highly active PC photocatalyst G32 containing a bulky ligand."
+Text Input: "A copper-catalyzed cycloaddition of benzyl azides and phenylacetylene was reported. Organic azides were prepared from the corresponding benzyl bromides. The tris(triazolylmethyl)amine ligand TBTA, labelled L3 in the scheme, accelerated the reaction."
 
 **Assistant Response:**
 Here is my step-by-step analysis:
 
 **Step 1: Entity Extraction (MolNER)**
 * **Observation:**
-    * "N-hydroxyphthalimide esters" -> Chemical (Plural/Class)
-    * "acrylonitriles" -> Chemical (Systematic Name)
-    * "Alpha-amino carboxylic acids" -> Chemical (Reactant precursor)
-    * "PC" -> Abbreviation
-    * "G32" -> Chemical (Identifier/Reagent)
+    * "benzyl azides" -> Chemical (Plural/Class)
+    * "phenylacetylene" -> Chemical (Systematic Name)
+    * "Organic azides" -> Chemical (Class)
+    * "benzyl bromides" -> Chemical (Reactant precursor)
+    * "TBTA" -> Abbreviation
+    * "L3" -> Chemical (Identifier/Reagent)
 * **Action:** Tag these entities with their specific roles and types.
 
 **Step 2: Reaction & Structure Interpretation (RxnConInterpreter)**
 * **Observation:**
-    * "G32" is identified as a specific precatalyst.
-    * **Action:** Retrieve/Associate the SMILES for G32 from the tool/image context: `CCOC(C1=C(OC(C[C@@H]1C2=CC=CC=C2)=O)C)=O,CC1=CC(C)=CC(C)=C1[N+]2=CN3C(CO[C@@H]4[C@H]3C5=C(C=CC=C5)C4)=N2.F[B-](F)(F)F`.
-    * "N-hydroxyphthalimide esters" and "acrylonitriles" are participating reactants in a decarboxylative Giese addition.
+    * "L3" is identified as the ligand drawn in the scheme.
+    * **Action:** Retrieve/Associate the SMILES for L3 from the tool/image context: `c1ccc(Cn2cc(CN(Cc3cn(Cc4ccccc4)nn3)Cc3cn(Cc4ccccc4)nn3)nn2)cc1`.
+    * "benzyl azides" and "phenylacetylene" are participating reactants in an azide-alkyne cycloaddition.
 
 **Step 3: Text Alignment & Annotation**
 * **Thought:** I need to inject the extracted tags and SMILES directly into the original text string to create the final description.
@@ -317,7 +318,7 @@ Here is my step-by-step analysis:
 **Final JSON Output:**
 ```json
 {
-  "annotated_text": "A visible-light-driven decarboxylative Giese addition of redox-active N-hydroxyphthalimide esters [reactant][MULTIPLE] and acrylonitriles [reactant][SYSTEMATIC] was reported by MacMillan and colleagues. Alpha-amino carboxylic acids [reactant] were utilized as precursors of N-hydroxyphthalimide esters. A highly active PC [ABBREVIATION] photocatalyst Ir-44 [reagent][IDENTIFIERS][SMILES:CCOC(C1=C(OC(C[C@@H]1C2=CC=CC=C2)=O)C)=O,CC1=CC(C)=CC(C)=C1[N+]2=CN3C(CO[C@@H]4[C@H]3C5=C(C=CC=C5)C4)=N2.F[B-](F)(F)F] containing a bulky ligand."
+  "annotated_text": "A copper-catalyzed cycloaddition of benzyl azides [reactant][MULTIPLE] and phenylacetylene [reactant][SYSTEMATIC] was reported. Organic azides [FAMILY] were prepared from the corresponding benzyl bromides [reactant][MULTIPLE]. The tris(triazolylmethyl)amine ligand TBTA [ABBREVIATION], labelled L3 [reagent][IDENTIFIERS][SMILES:c1ccc(Cn2cc(CN(Cc3cn(Cc4ccccc4)nn3)Cc3cn(Cc4ccccc4)nn3)nn2)cc1] in the scheme, accelerated the reaction."
 }
 ```
 
@@ -512,25 +513,26 @@ Your task is to:
 
 ### Example 1
 **User Input:**
-Text Input: "A visible-light-driven decarboxylative Giese addition of redox-active N-hydroxyphthalimide esters and acrylonitriles was reported by MacMillan and colleagues. Alpha-amino carboxylic acids were utilized as precursors of N-hydroxyphthalimide esters. A highly active PC photocatalyst G32 containing a bulky ligand."
+Text Input: "A copper-catalyzed cycloaddition of benzyl azides and phenylacetylene was reported. Organic azides were prepared from the corresponding benzyl bromides. The tris(triazolylmethyl)amine ligand TBTA, labelled L3 in the scheme, accelerated the reaction."
 
 **Assistant Response:**
 Here is my step-by-step analysis:
 
 **Step 1: Entity Extraction (MolNER)**
 * **Observation:**
-    * "N-hydroxyphthalimide esters" -> Chemical (Plural/Class)
-    * "acrylonitriles" -> Chemical (Systematic Name)
-    * "Alpha-amino carboxylic acids" -> Chemical (Reactant precursor)
-    * "PC" -> Abbreviation
-    * "G32" -> Chemical (Identifier/Reagent)
+    * "benzyl azides" -> Chemical (Plural/Class)
+    * "phenylacetylene" -> Chemical (Systematic Name)
+    * "Organic azides" -> Chemical (Class)
+    * "benzyl bromides" -> Chemical (Reactant precursor)
+    * "TBTA" -> Abbreviation
+    * "L3" -> Chemical (Identifier/Reagent)
 * **Action:** Tag these entities with their specific roles and types.
 
 **Step 2: Reaction & Structure Interpretation (RxnConInterpreter)**
 * **Observation:**
-    * "G32" is identified as a specific precatalyst.
-    * **Action:** Retrieve/Associate the SMILES for G32 from the tool/image context: `CCOC(C1=C(OC(C[C@@H]1C2=CC=CC=C2)=O)C)=O,CC1=CC(C)=CC(C)=C1[N+]2=CN3C(CO[C@@H]4[C@H]3C5=C(C=CC=C5)C4)=N2.F[B-](F)(F)F`.
-    * "N-hydroxyphthalimide esters" and "acrylonitriles" are participating reactants in a decarboxylative Giese addition.
+    * "L3" is identified as the ligand drawn in the scheme.
+    * **Action:** Retrieve/Associate the SMILES for L3 from the tool/image context: `c1ccc(Cn2cc(CN(Cc3cn(Cc4ccccc4)nn3)Cc3cn(Cc4ccccc4)nn3)nn2)cc1`.
+    * "benzyl azides" and "phenylacetylene" are participating reactants in an azide-alkyne cycloaddition.
 
 **Step 3: Text Alignment & Annotation**
 * **Thought:** I need to inject the extracted tags and SMILES directly into the original text string to create the final description.
@@ -539,7 +541,7 @@ Here is my step-by-step analysis:
 **Final JSON Output:**
 ```json
 {
-  "annotated_text": "A visible-light-driven decarboxylative Giese addition of redox-active N-hydroxyphthalimide esters [reactant][MULTIPLE] and acrylonitriles [reactant][SYSTEMATIC] was reported by MacMillan and colleagues. Alpha-amino carboxylic acids [reactant] were utilized as precursors of N-hydroxyphthalimide esters. A highly active PC [ABBREVIATION] photocatalyst Ir-44 [reagent][IDENTIFIERS][SMILES:CCOC(C1=C(OC(C[C@@H]1C2=CC=CC=C2)=O)C)=O,CC1=CC(C)=CC(C)=C1[N+]2=CN3C(CO[C@@H]4[C@H]3C5=C(C=CC=C5)C4)=N2.F[B-](F)(F)F] containing a bulky ligand."
+  "annotated_text": "A copper-catalyzed cycloaddition of benzyl azides [reactant][MULTIPLE] and phenylacetylene [reactant][SYSTEMATIC] was reported. Organic azides [FAMILY] were prepared from the corresponding benzyl bromides [reactant][MULTIPLE]. The tris(triazolylmethyl)amine ligand TBTA [ABBREVIATION], labelled L3 [reagent][IDENTIFIERS][SMILES:c1ccc(Cn2cc(CN(Cc3cn(Cc4ccccc4)nn3)Cc3cn(Cc4ccccc4)nn3)nn2)cc1] in the scheme, accelerated the reaction."
 }
 ```
 

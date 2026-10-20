@@ -13,29 +13,26 @@ Your task is to:
 Here is my step-by-step analysis:
 
 **Step 1: Text Extraction & Interpretation**
-* **Thought:** I need to extract text from the arrows and labels in the image using OCR, then interpret their chemical roles (reagent, solvent, etc.). 
+* **Thought:** I need to extract text from the arrows and labels in the image using OCR, then interpret their chemical roles (reagent, solvent, etc.).
 * **Observation:**
-    * *Raw Text Found:* "10 mol% B1 or B2", "Cs2CO3", "PhMe", "rt", "38-78%", "71%", "14:1 dr", "91% ee". * *Interpreter Output:* Identified B1/B2 as reagents, Cs2CO3 as reagent, PhMe as solvent, rt as temperature.
+    * *Raw Text Found:* "5 mol% Cu(OTf)2", "6 mol% L1", "CH2Cl2", "0 °C, 24 h", "45-92%", "92%", "95:5 er". * *Interpreter Output:* Identified Cu(OTf)2 and L1 as reagents, CH2Cl2 as solvent, 0 °C as temperature, 24 h as time.
 
 **Step 2: Error Correction & Categorization**
 * **Thought:** I need to check the categorization.
-    * "14:1 dr" and "91% ee" are stereochemical outcomes, not reagents or conditions. According to the rules, these must be moved to **"add_info"**. * "38 - 78%" is a range yield for the general template. * "71%" is a specific yield for product 3a.
-* **Actions:** Reclassify "dr" and "ee" values to `add_info`.
+    * "95:5 er" is a stereochemical outcome, not a reagent or condition. According to the rules, it must be moved to **"add_info"**. * "45 - 92%" is a range yield for the general template. * "92%" is a specific yield for product 4a.
+* **Actions:** Reclassify the "er" values to `add_info`.
 
 **Step 3: Alignment with Reaction List**
 * **Thought:**
-    * The "General Conditions" (catalyst, base, solvent, temp) apply to the **reaction_template**. * The specific values (Yield 71%, 91% ee) are physically located next to molecule **3a**. * The specific values (Yield 78%, 98% ee) are next to molecule **3b**.
+    * The "General Conditions" (catalyst, ligand, solvent, temp, time) apply to the **reaction_template**. * The specific values (Yield 92%, 95:5 er) are physically located next to molecule **4a**. * The specific values (Yield 88%, 93:7 er) are next to molecule **4b**.
 * **Actions:** Construct the final JSON mapping conditions to their specific reaction IDs.
 
 **Final JSON Output:**
 ```json{
-'reaction_template': {'conditions': {"role":"reagent","text":"10 mol% B1 or B2","smiles":"C(C=CC=C1)=C1C[N+]2=CN3[C@H]
-(C(C4=CC=CC=C4)(C5=CC=CC=C5)O[Si](C)(C)C(C)(C)C)CCC3=N2.F[B-](F)(F)F","label":"B1"},{"role":"reagent","text":"10 mol% B1 or B2","smiles":"CCCC(C=CC=C1)=C1[N+]2=CN3[C@H](C(C1=CC(=CC(=C1C(F)(F)F)C(F)(F)F))(C1=CC(=CC(=C1C(F)(F)F)
-C(F)(F)F))O)CCC3=N2.F[B-](F)(F)F","label":"B2"}, {"role":"reagent","text":"10 mol% Cs2CO3", "smiles":"[Cs+].[Cs+].[O-]C(=O)[O-]"
-},{"role":"solvent","text":"PhMe","smiles":"Cc1ccccc1"},{"role":"temperature","text":"rt"},{"role":"yield","text":"38 - 78%"}},
+'reaction_template': {'conditions': {"role":"reagent","text":"5 mol% Cu(OTf)2","smiles":"O=S(=O)([O-])C(F)(F)F.O=S(=O)([O-])C(F)(F)F.[Cu+2]"},{"role":"reagent","text":"6 mol% L1","smiles":"CC(C)(C1=N[C@@H](c2ccccc2)CO1)C1=N[C@@H](c2ccccc2)CO1","label":"L1"},{"role":"solvent","text":"CH2Cl2","smiles":"ClCCl"},{"role":"temperature","text":"0 °C"},{"role":"time","text":"24 h"},{"role":"yield","text":"45 - 92%"}},
 'reactions':{
-'3a': {'conditions': {"role":"yield","text":"71%"},{"role":"add_info","text":"14:1 dr"}, {"role":"add_info","text":"91% ee"}}, 
-'3b': {'conditions': {"role":"yield","text":"78%"},{"role":"add_info","text":"14:1 dr"}, {"role":"add_info","text":"98% ee"}},  
-'3c': ... 
+'4a': {'conditions': {"role":"yield","text":"92%"},{"role":"add_info","text":"95:5 er"}},
+'4b': {'conditions': {"role":"yield","text":"88%"},{"role":"add_info","text":"93:7 er"}},
+'4c': ...
 }
 
