@@ -10,6 +10,8 @@ For every reaction id, answer each question with "yes", "no" or "unsure":
 - conditions: the catalysts and reagents the figure gives for that reaction (drawn, or named by label) appear among its conditions.
 - resolved: every variable group of that reaction (R, Ar, X, n) is replaced by the value the figure gives; no "*" is left where the figure defines the group.
 - duplicate: another extracted reaction is the same reaction.
+- stereo_drawn: the figure draws at least one wedged or hashed bond on a product of this reaction (on the product itself, or on the template product it is built from), or states its absolute or relative configuration. Do not judge whether the SMILES gets the configuration right.
+- counterion_missing: the figure gives a counter-ion or salt for a reactant, product, catalyst or reagent of this reaction (drawn next to the structure, in its label, in a caption or in a footnote such as "BF4 counterions omitted for clarity"), and that counter-ion is absent from the corresponding SMILES.
 And write "problem": the most important thing wrong with this reaction compared with the figure, in a few words, or "" when you see nothing wrong.
 Then, for the whole figure:
 - expected_reactions: how many distinct reactions the figure defines (scheme arrows, scope entries and table rows that are reactions).
@@ -17,4 +19,4 @@ Then, for the whole figure:
 Answer "unsure" when the figure does not let you decide; do not guess.
 
 Respond with one JSON object and nothing else:
-{"reactions": [{"id": "R1", "entry": "3a", "drawn": "yes", "complete": "yes", "structures": "yes", "conditions": "unsure", "resolved": "yes", "duplicate": "no", "problem": ""}], "expected_reactions": 1, "missing": []}
+{"reactions": [{"id": "R1", "entry": "3a", "drawn": "yes", "complete": "yes", "structures": "yes", "conditions": "unsure", "resolved": "yes", "duplicate": "no", "stereo_drawn": "no", "counterion_missing": "no", "problem": ""}], "expected_reactions": 1, "missing": []}

@@ -1,9 +1,9 @@
 {
- "created": "2026-10-10T20:44:12",
- "source": "confidence/export_models.py of the ChemEagle benchmark (not part of this repo)",
+ "created": "2026-10-20T07:23:50",
+ "source": "F:\\chemeagle\\benchmark_outputs\\mol_llm_stage_gt\\confidence\\export_models_v2.py",
  "sklearn": "1.7.1",
  "numpy": "1.26.4",
- "label": "reaction fully correct under the benchmark hard rule (stereo stripped, largest fragment), 2026-09-14_final evaluation.py and GT",
+ "label": "reaction fully correct under the benchmark hard rule with tetrahedral centres compared and every fragment matched (the rule of Fig. 5), 2026-09-14_final evaluation.py and GT",
  "levels": {
   "high": 0.85,
   "medium": 0.5
@@ -18,12 +18,13 @@
   "model_mini": "gpt-5-mini",
   "model_luna": "gpt-5.6-luna"
  },
+ "scorer_version": "v2 (2026-10-20): stereo and ion features; checker questions stereo_drawn, counterion_missing",
  "models": {
   "deterministic": {
    "checker": null,
    "reactions": 21650,
    "figures": 324,
-   "correct_share": 0.7557,
+   "correct_share": 0.6859,
    "runs": [
     "frozen_gemini-3.7-flash",
     "frozen_gpt-5-mini",
@@ -93,14 +94,26 @@
     "route_variant",
     "model_gemini",
     "model_mini",
-    "model_luna"
+    "model_luna",
+    "prod_n_assigned",
+    "prod_n_unassigned",
+    "rx_selectivity_text",
+    "n_cond_charged",
+    "n_charged_any",
+    "n_stray_fragment",
+    "n_neutral_halide_on_cation",
+    "fig_selectivity_text",
+    "unassigned_with_selectivity",
+    "fewer_than_template",
+    "fig_frac_unassigned",
+    "alone_unassigned"
    ]
   },
   "checker_gemini-3.7-flash": {
    "checker": "gemini-3.7-flash",
    "reactions": 9921,
    "figures": 324,
-   "correct_share": 0.7914,
+   "correct_share": 0.722,
    "runs": [
     "frozen_gemini-3.7-flash",
     "frozen_gpt-5-mini",
@@ -157,6 +170,18 @@
     "model_gemini",
     "model_mini",
     "model_luna",
+    "prod_n_assigned",
+    "prod_n_unassigned",
+    "rx_selectivity_text",
+    "n_cond_charged",
+    "n_charged_any",
+    "n_stray_fragment",
+    "n_neutral_halide_on_cation",
+    "fig_selectivity_text",
+    "unassigned_with_selectivity",
+    "fewer_than_template",
+    "fig_frac_unassigned",
+    "alone_unassigned",
     "v_answered",
     "v_complete",
     "v_conditions",
@@ -167,14 +192,18 @@
     "v_n_missing",
     "v_problem",
     "v_resolved",
-    "v_structures"
+    "v_structures",
+    "v_stereo_drawn",
+    "v_counterion_missing",
+    "v_drawn_but_unassigned",
+    "v_drawn_but_none"
    ]
   },
   "checker_gpt-5-mini": {
    "checker": "gpt-5-mini",
    "reactions": 4993,
    "figures": 287,
-   "correct_share": 0.7336,
+   "correct_share": 0.6455,
    "runs": [
     "frozen_gpt-5-mini",
     "gemini_0913",
@@ -230,6 +259,18 @@
     "model_gemini",
     "model_mini",
     "model_luna",
+    "prod_n_assigned",
+    "prod_n_unassigned",
+    "rx_selectivity_text",
+    "n_cond_charged",
+    "n_charged_any",
+    "n_stray_fragment",
+    "n_neutral_halide_on_cation",
+    "fig_selectivity_text",
+    "unassigned_with_selectivity",
+    "fewer_than_template",
+    "fig_frac_unassigned",
+    "alone_unassigned",
     "v_answered",
     "v_complete",
     "v_conditions",
@@ -240,7 +281,11 @@
     "v_n_missing",
     "v_problem",
     "v_resolved",
-    "v_structures"
+    "v_structures",
+    "v_stereo_drawn",
+    "v_counterion_missing",
+    "v_drawn_but_unassigned",
+    "v_drawn_but_none"
    ]
   }
  }

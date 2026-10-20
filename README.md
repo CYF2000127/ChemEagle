@@ -136,7 +136,10 @@ print(results['reactions'][0]['confidence'])
 check the output as well. The generic template of a scheme (R, Ar or X left as placeholders, with other
 reactions of the figure as its instances) is flagged `template_reaction` and listed in
 `confidence_summary['template_reactions']`, so it can be told apart from the concrete reactions; it is scored
-like any other reaction.
+like any other reaction. Other flags point to the usual reasons for a low score, for example
+`unresolved_placeholder`, `unbalanced_charge` (also for catalyst or reagent structures), `stray_fragment` and
+`unassigned_stereocenter` (a stereocentre left without configuration where the figure reports a selectivity or
+the template assigns it); with the LLM check, `checker_counterion_missing` and the other `checker_*` flags.
 
 #### Option B: ChemEagle with a local model (vLLM)
 

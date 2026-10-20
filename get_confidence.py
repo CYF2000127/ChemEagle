@@ -3,20 +3,24 @@
 Runs after the final synthesis in ``main.ChemEagle`` (on by default, ``use_confidence``). Two kinds of evidence feed a
 gradient-boosted classifier with isotonic calibration, trained on the GT of the 324 benchmark figures:
 
-* deterministic features of the output and of the run: placeholders left, fragments, charges, whether each
-  molecule was copied from an agent result or written by the synthesis, which agents ran, events in the log;
+* deterministic features of the output and of the run: placeholders left, fragments, charges (also of condition
+  structures), stereocentres left unassigned where the figure reports a selectivity or the template assigns them,
+  whether each molecule was copied from an agent result or written by the synthesis, which agents ran, events in
+  the log;
 * optionally (``confidence_llm``, off by default), the answers of a checker LLM that sees the figure and the
-  extracted reactions once and answers six fixed yes / no / unsure questions per reaction. It never gives a
-  number and never edits anything; its answers are features, the number comes from the calibrated model.
-  The checker is the extraction model unless another is named; it is only called when
-  ``confidence_models/`` holds a model calibrated on that checker's answers.
+  extracted reactions once and answers eight fixed yes / no / unsure questions per reaction, including whether the
+  figure draws wedged or hashed bonds on the product (compared by the program with the product SMILES) and whether
+  a counter-ion the figure gives is missing. It never gives a number and never edits anything; its answers are
+  features, the number comes from the calibrated model. The checker is the extraction model unless another is
+  named; it is only called when ``confidence_models/`` holds a model calibrated on that checker's answers.
 
 ``score`` is the calibrated probability that the reaction is fully correct under the benchmark's hard rule
-(stereo stripped, largest fragment). ``level``: high (score >= 0.85), medium (0.5 to 0.85), low (< 0.5).
-Nothing is removed from the output; callers filter on the level.
+(tetrahedral stereocentres compared, every fragment matched). ``level``: high (score >= 0.85), medium (0.5 to 0.85),
+low (< 0.5). Nothing is removed from the output; callers filter on the level.
 
-The models in ``confidence_models/`` are written by the benchmark's ``confidence/export_models.py``; the
-feature code here must stay identical to the code that built their training data.
+The models in ``confidence_models/`` are written by the benchmark's ``confidence/export_models_v2.py``; the
+feature code here must stay identical to the code that built their training data (the stereo and ion features are
+computed for training by the functions of this module).
 """
 import base64
 import contextlib
@@ -33,7 +37,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(_HERE, "confidence_models")
 PROMPT_PATH = os.path.join(_HERE, "prompt", "prompt_confidence_checker.txt")
 LEVELS = ((0.85, "high"), (0.5, "medium"), (0.0, "low"))
-QUESTIONS = ("drawn", "complete", "structures", "conditions", "resolved", "duplicate")
+QUESTIONS = ("drawn", "complete", "structures", "conditions", "resolved", "duplicate", "stereo_drawn", "counterion_missing")
 
 
 def env_switch(value: Optional[bool], name: str, default: bool) -> bool:
@@ -269,7 +273,82 @@ def _reaction_features(rx, idx, prods_all, agent_mols, agent_sigs):
     f["is_first"] = float(idx == 0)
     texts = " ".join(str(c.get("text") or "") for c in cs) + " " + json.dumps(rx.get("additional_info") or "", ensure_ascii=False)
     f["has_yield_text"] = float(bool(re.search(r"\d\s*%", texts)))
+    f.update(_stereo_ion_features(rx))
     return f
+
+
+# stereochemistry left unassigned and counter-ion problems (scorer v2, 2026-10-20): errors that leave a valid molecule
+_SELECTIVITY = re.compile(r"(\bee\b|e\.e\.|\bdr\b|d\.r\.|\ber\b|e\.r\.|\bcis\b|\btrans\b|\bsyn\b|\banti\b|enantio|diastereo)",
+                          re.I)
+
+
+def _stereo_counts(s):
+    """(assigned, unassigned) potential tetrahedral stereocentres of one SMILES"""
+    m = Chem.MolFromSmiles(s) if isinstance(s, str) and s.strip() and s.strip().lower() != "none" else None
+    if m is None:
+        return 0, 0
+    c = Chem.FindMolChiralCenters(m, includeUnassigned=True, useLegacyImplementation=False)
+    return sum(1 for _, lab in c if lab != "?"), sum(1 for _, lab in c if lab == "?")
+
+
+def _ion_flags(s):
+    """(net charge != 0, stray fragments: <= 3 carbons and nothing else, or a lone '*'; neutral halogen next to a cation)"""
+    m = Chem.MolFromSmiles(s) if isinstance(s, str) and s.strip() and s.strip().lower() != "none" else None
+    if m is None:
+        return 0, 0, 0
+    frags = Chem.GetMolFrags(m, asMols=True)
+    big = max(frags, key=lambda f: f.GetNumHeavyAtoms())
+    stray = 0
+    for fr in frags:
+        if fr is big:
+            continue
+        syms = [a.GetSymbol() for a in fr.GetAtoms()]
+        if syms == ["*"] or (all(x == "C" for x in syms) and len(syms) <= 3 and Chem.GetFormalCharge(fr) == 0):
+            stray += 1
+    cation = any(Chem.GetFormalCharge(fr) > 0 for fr in frags)
+    halide = any(fr.GetNumAtoms() == 1 and fr.GetAtomWithIdx(0).GetSymbol() in ("F", "Cl", "Br", "I")
+                 and Chem.GetFormalCharge(fr) == 0 for fr in frags)
+    return int(Chem.GetFormalCharge(m) != 0), stray, int(cation and halide)
+
+
+def _rx_text(rx):
+    cs = [c for c in rx.get("conditions") or [] if isinstance(c, dict)]
+    return " ".join(str(c.get("text") or "") for c in cs) + " " + json.dumps(rx.get("additional_info") or "", ensure_ascii=False)
+
+
+def _stereo_ion_features(rx):
+    sm = lambda side: [m.get("smiles") for m in rx.get(side) or [] if isinstance(m, dict)]  # noqa: E731
+    cond = [c.get("smiles") for c in rx.get("conditions") or [] if isinstance(c, dict)]
+    pa = pu = 0
+    for s in sm("products"):
+        a, u = _stereo_counts(s)
+        pa, pu = pa + a, pu + u
+    cf = [_ion_flags(s) for s in cond]
+    af = [_ion_flags(s) for s in sm("reactants") + sm("products")]
+    return {"prod_n_assigned": pa, "prod_n_unassigned": pu,
+            "rx_selectivity_text": float(bool(_SELECTIVITY.search(_rx_text(rx)))),
+            "n_cond_charged": sum(x[0] for x in cf), "n_charged_any": sum(x[0] for x in cf + af),
+            "n_stray_fragment": sum(x[1] for x in cf + af), "n_neutral_halide_on_cation": sum(x[2] for x in cf + af)}
+
+
+def _figure_stereo(rxns, rows):
+    """Figure-level stereo features, added to the per-reaction rows (which already hold _stereo_ion_features)."""
+    fig_sel = any(_SELECTIVITY.search(_rx_text(rx)) for rx in rxns)
+    tmpl_assigned = 0
+    for rx in rxns:
+        for m in rx.get("products") or []:
+            s = m.get("smiles") if isinstance(m, dict) else None
+            if isinstance(s, str) and "*" in s:
+                tmpl_assigned = max(tmpl_assigned, _stereo_counts(s)[0])
+    frac = sum(1 for r in rows if r["prod_n_unassigned"] > 0) / len(rows) if rows else 0.0
+    for rx, r in zip(rxns, rows):
+        concrete = not any(isinstance(m, dict) and "*" in (m.get("smiles") or "") for m in rx.get("products") or [])
+        r["fig_selectivity_text"] = float(fig_sel)
+        r["unassigned_with_selectivity"] = float(r["prod_n_unassigned"] > 0 and fig_sel)
+        r["fewer_than_template"] = float(concrete and tmpl_assigned > r["prod_n_assigned"])
+        r["fig_frac_unassigned"] = frac
+        r["alone_unassigned"] = float(r["prod_n_unassigned"] > 0 and frac < 0.5)
+    return rows
 
 
 def extraction_family(model_name: Optional[str]) -> Optional[str]:
@@ -297,6 +376,7 @@ def deterministic_features(rxns, artifacts, log_text, model_name):
             for fam in ("gemini", "mini", "luna"):
                 row["model_" + fam] = float(family == fam)
             rows.append(row)
+        _figure_stereo(rxns, rows)
     return rows
 
 
@@ -374,6 +454,17 @@ def checker_features(parsed, n):
     return rows, by_id
 
 
+def checker_derived(det_row, ver_row):
+    """The program's comparison of the checker's stereo_drawn answer with the product SMILES (the checker is not
+    asked whether a configuration is right): drawn and a centre left unassigned, drawn and no centre assigned."""
+    sd = ver_row.get("v_stereo_drawn", math.nan)
+    if sd != sd:
+        return {"v_drawn_but_unassigned": math.nan, "v_drawn_but_none": math.nan}
+    drawn = sd == 1.0
+    return {"v_drawn_but_unassigned": float(drawn and det_row["prod_n_unassigned"] > 0),
+            "v_drawn_but_none": float(drawn and det_row["prod_n_assigned"] == 0)}
+
+
 # ---------------------------------------------------------------- scoring
 _BUNDLES = {}
 
@@ -437,8 +528,13 @@ def _flags(det, ver, template=False):
         out.append("invalid_or_missing_smiles")
     if det["n_multifrag"]:
         out.append("multi_fragment_molecule")
-    if det["n_unbalanced"]:
+    if det["n_unbalanced"] or det["n_cond_charged"]:
         out.append("unbalanced_charge")
+    if det["n_stray_fragment"]:
+        out.append("stray_fragment")
+    if det["unassigned_with_selectivity"] or det["fewer_than_template"] or (ver and ver.get("v_stereo_drawn") == 1
+                                                                             and det["prod_n_unassigned"]):
+        out.append("unassigned_stereocenter")
     if det["dup_product_in_figure"]:
         out.append("duplicate_product")
     if det["n_written"]:
@@ -448,6 +544,8 @@ def _flags(det, ver, template=False):
                         ("v_conditions", "checker_conditions_no"), ("v_resolved", "checker_unresolved")):
             if ver.get(q) == 0:
                 out.append(flag)
+        if ver.get("v_counterion_missing") == 1:
+            out.append("checker_counterion_missing")
     return out
 
 
@@ -501,7 +599,7 @@ def attach_confidence(output, image_path, artifacts, log_text, *, model_name, us
 
     name = ("checker_" + cal) if ver is not None else "deterministic"
     bundle = _bundle(name)
-    rows = [dict(d, **(ver[i] if ver is not None else {})) for i, d in enumerate(det)]
+    rows = [dict(d, **(dict(ver[i], **checker_derived(d, ver[i])) if ver is not None else {})) for i, d in enumerate(det)]
     X = np.array([[float(r[k]) for k in bundle["features"]] for r in rows])   # KeyError = feature code out of step
     p = bundle["calibrator"].predict(bundle["model"].predict_proba(X)[:, 1])
 
