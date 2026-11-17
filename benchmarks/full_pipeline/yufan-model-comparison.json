@@ -1,0 +1,759 @@
+{
+  "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+  "focused_fork_commit": "9872c6f07b2f6bdde3f335410ae9150341725dce",
+  "comparison_scope": "Same six selected PDF pages and eleven targets; focused target/reference-assisted workflow versus original unmodified selected-page hybrid. Not a whole-document or controlled architecture comparison.",
+  "focused": {
+    "gpt-6-luna": {
+      "expected_entries": 11,
+      "delivered_entries": 11,
+      "outcomes_correct": 22,
+      "outcomes_total": 22,
+      "conditions_correct": 30,
+      "conditions_total": 33,
+      "unreported_ee": 0,
+      "exact_complete_experiments_verified": 0,
+      "invalid_graph_candidates": 0,
+      "parseable_graph_candidates": 13,
+      "usage": {
+        "input_tokens": 60773,
+        "cached_input_tokens": 0,
+        "output_tokens": 6205,
+        "seconds": 143.16517470998224,
+        "calls": 6,
+        "calls_missing_usage": 0,
+        "estimated_usd": null,
+        "billed_usd": null,
+        "cost_status": "Unpriced: proxy tariff/billing unavailable"
+      }
+    },
+    "gpt-6.1-terra": {
+      "expected_entries": 11,
+      "delivered_entries": 11,
+      "outcomes_correct": 22,
+      "outcomes_total": 22,
+      "conditions_correct": 33,
+      "conditions_total": 33,
+      "unreported_ee": 0,
+      "exact_complete_experiments_verified": 0,
+      "invalid_graph_candidates": 2,
+      "parseable_graph_candidates": 36,
+      "usage": {
+        "input_tokens": 60773,
+        "cached_input_tokens": 0,
+        "output_tokens": 8637,
+        "seconds": 183.55435891699744,
+        "calls": 6,
+        "calls_missing_usage": 0,
+        "estimated_usd": null,
+        "billed_usd": null,
+        "cost_status": "Unpriced: proxy tariff/billing unavailable"
+      }
+    },
+    "gpt-6.1-sol": {
+      "expected_entries": 11,
+      "delivered_entries": 11,
+      "outcomes_correct": 22,
+      "outcomes_total": 22,
+      "conditions_correct": 33,
+      "conditions_total": 33,
+      "unreported_ee": 0,
+      "exact_complete_experiments_verified": 0,
+      "invalid_graph_candidates": 0,
+      "parseable_graph_candidates": 40,
+      "usage": {
+        "input_tokens": 60773,
+        "cached_input_tokens": 0,
+        "output_tokens": 13181,
+        "seconds": 310.4445467090118,
+        "calls": 6,
+        "calls_missing_usage": 0,
+        "estimated_usd": null,
+        "billed_usd": null,
+        "cost_status": "Unpriced: proxy tariff/billing unavailable"
+      }
+    }
+  },
+  "yufan_original": {
+    "gpt-6-luna": {
+      "expected_entries": 11,
+      "delivered_entries": 4,
+      "outcomes_correct": 8,
+      "outcomes_total": 22,
+      "conditions_correct": 12,
+      "conditions_total": 33,
+      "invalid_graph_candidates": 2,
+      "parseable_graph_candidates": 8,
+      "unreported_ee": 0,
+      "completed_pages": 5,
+      "failed_pages": 1,
+      "pending_pages": 0,
+      "ambiguous_entries": 0,
+      "missing_entries": 7,
+      "pipeline_wall_seconds": 1372.4833555030273,
+      "usage": {
+        "input_tokens": 363156,
+        "cached_input_tokens": 0,
+        "output_tokens": 31848,
+        "seconds": 724.0693128341809,
+        "calls": 39,
+        "calls_missing_usage": 0,
+        "estimated_usd": null,
+        "billed_usd": null,
+        "cost_status": "Unpriced: proxy tariff/billing unavailable"
+      }
+    },
+    "gpt-6.1-terra": {
+      "expected_entries": 11,
+      "delivered_entries": 6,
+      "outcomes_correct": 12,
+      "outcomes_total": 22,
+      "conditions_correct": 18,
+      "conditions_total": 33,
+      "invalid_graph_candidates": 2,
+      "parseable_graph_candidates": 16,
+      "unreported_ee": 0,
+      "completed_pages": 5,
+      "failed_pages": 1,
+      "pending_pages": 0,
+      "ambiguous_entries": 0,
+      "missing_entries": 5,
+      "pipeline_wall_seconds": 1545.1633628501077,
+      "usage": {
+        "input_tokens": 366822,
+        "cached_input_tokens": 9216,
+        "output_tokens": 42954,
+        "seconds": 934.7132876220858,
+        "calls": 40,
+        "calls_missing_usage": 0,
+        "estimated_usd": null,
+        "billed_usd": null,
+        "cost_status": "Unpriced: proxy tariff/billing unavailable"
+      }
+    },
+    "gpt-6.1-sol": {
+      "expected_entries": 11,
+      "delivered_entries": 4,
+      "outcomes_correct": 8,
+      "outcomes_total": 22,
+      "conditions_correct": 12,
+      "conditions_total": 33,
+      "invalid_graph_candidates": 0,
+      "parseable_graph_candidates": 14,
+      "unreported_ee": 0,
+      "completed_pages": 3,
+      "failed_pages": 3,
+      "pending_pages": 0,
+      "ambiguous_entries": 0,
+      "missing_entries": 7,
+      "pipeline_wall_seconds": 2075.864737243006,
+      "usage": {
+        "input_tokens": 428216,
+        "cached_input_tokens": 77184,
+        "output_tokens": 62132,
+        "seconds": 1471.977935333096,
+        "calls": 44,
+        "calls_missing_usage": 0,
+        "estimated_usd": null,
+        "billed_usd": null,
+        "cost_status": "Unpriced: proxy tariff/billing unavailable"
+      }
+    }
+  },
+  "original_case_status": [
+    {
+      "case": "epoxidation",
+      "model": "gpt-6-luna",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319886",
+      "array_index": "9",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "7450bec200df68c198e92e9fa847bc8cbf67b762ec3eca3e9384a6c76beb3f20",
+      "seconds": 248.8919032900012,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "iodination",
+      "model": "gpt-6-luna",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319869",
+      "array_index": "6",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "ae3f69438a230f5f1b447c858d1996e5624b09d3f2ff1c12f9834c5c5c241f8a",
+      "seconds": 154.99009994399967,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "furan",
+      "model": "gpt-6-luna",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319845",
+      "array_index": "3",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "c2a19d397b17081b6ba758456e92fccac1651939a5fdd203208db2be96f9f9be",
+      "seconds": 273.9126238949975,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "quaternary",
+      "model": "gpt-6-luna",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319897",
+      "array_index": "12",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "468b970868a3dea7fbbe7d29e3ce11fd52bd7086932ad8158f3024cab4cef023",
+      "seconds": 284.04405722400406,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "hydride",
+      "model": "gpt-6-luna",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319813",
+      "array_index": "0",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "357621219ac5e910233b225d77a1150e99784492289cccc3b8c05224453095bb",
+      "seconds": 292.07805357100005,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "cycloaddition",
+      "model": "gpt-6-luna",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319913",
+      "array_index": "15",
+      "phase": "failed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "35724a6e808c8597de9746d88a59fb68508bd15d7dccb2c93d78f78da9db9cbd",
+      "seconds": 118.56661757902475,
+      "provider_requests": 4,
+      "gpu": "NVIDIA A30",
+      "error_type": "RuntimeError",
+      "error": "All planned agents failed, nothing left to synthesise: process_reaction_image_with_table_R_group: JSONDecodeError: Could not parse JSON from model response. Content may not be valid JSON.: line 1 column 1 (char 0)",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "epoxidation",
+      "model": "gpt-6.1-terra",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319887",
+      "array_index": "10",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "7450bec200df68c198e92e9fa847bc8cbf67b762ec3eca3e9384a6c76beb3f20",
+      "seconds": 236.42091905704,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "iodination",
+      "model": "gpt-6.1-terra",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319880",
+      "array_index": "7",
+      "phase": "failed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "ae3f69438a230f5f1b447c858d1996e5624b09d3f2ff1c12f9834c5c5c241f8a",
+      "seconds": 169.1506781670032,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "error_type": "JSONDecodeError",
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "furan",
+      "model": "gpt-6.1-terra",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319846",
+      "array_index": "4",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "c2a19d397b17081b6ba758456e92fccac1651939a5fdd203208db2be96f9f9be",
+      "seconds": 322.2594152780366,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "quaternary",
+      "model": "gpt-6.1-terra",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319903",
+      "array_index": "13",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "468b970868a3dea7fbbe7d29e3ce11fd52bd7086932ad8158f3024cab4cef023",
+      "seconds": 268.9826476310045,
+      "provider_requests": 6,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "hydride",
+      "model": "gpt-6.1-terra",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319819",
+      "array_index": "1",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "357621219ac5e910233b225d77a1150e99784492289cccc3b8c05224453095bb",
+      "seconds": 277.22552716202335,
+      "provider_requests": 6,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "cycloaddition",
+      "model": "gpt-6.1-terra",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319914",
+      "array_index": "16",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "35724a6e808c8597de9746d88a59fb68508bd15d7dccb2c93d78f78da9db9cbd",
+      "seconds": 271.12417555499997,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "epoxidation",
+      "model": "gpt-6.1-sol",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319890",
+      "array_index": "11",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "7450bec200df68c198e92e9fa847bc8cbf67b762ec3eca3e9384a6c76beb3f20",
+      "seconds": 312.9302125300019,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "iodination",
+      "model": "gpt-6.1-sol",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319818",
+      "array_index": "8",
+      "phase": "failed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "ae3f69438a230f5f1b447c858d1996e5624b09d3f2ff1c12f9834c5c5c241f8a",
+      "seconds": 201.92695811500016,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "error_type": "JSONDecodeError",
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "furan",
+      "model": "gpt-6.1-sol",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319854",
+      "array_index": "5",
+      "phase": "failed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "c2a19d397b17081b6ba758456e92fccac1651939a5fdd203208db2be96f9f9be",
+      "seconds": 470.2320778420035,
+      "provider_requests": 8,
+      "gpu": "NVIDIA A30",
+      "error_type": "JSONDecodeError",
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "quaternary",
+      "model": "gpt-6.1-sol",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319908",
+      "array_index": "14",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "468b970868a3dea7fbbe7d29e3ce11fd52bd7086932ad8158f3024cab4cef023",
+      "seconds": 349.3400996510027,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "hydride",
+      "model": "gpt-6.1-sol",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319820",
+      "array_index": "2",
+      "phase": "failed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "357621219ac5e910233b225d77a1150e99784492289cccc3b8c05224453095bb",
+      "seconds": 392.692567777005,
+      "provider_requests": 7,
+      "gpu": "NVIDIA A30",
+      "error_type": "JSONDecodeError",
+      "error": "Expecting value: line 1 column 1 (char 0)",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    },
+    {
+      "case": "cycloaddition",
+      "model": "gpt-6.1-sol",
+      "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+      "job_id": "2319885",
+      "array_index": "17",
+      "phase": "completed",
+      "source_before_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "request_limit": 16,
+      "wall_limit_seconds": 1800,
+      "model_request_deadline_seconds": 600,
+      "page_image_sha256": "35724a6e808c8597de9746d88a59fb68508bd15d7dccb2c93d78f78da9db9cbd",
+      "seconds": 348.7428213279927,
+      "provider_requests": 8,
+      "gpu": "NVIDIA A30",
+      "source_after_sha256": "ab8578431c200800b302c0ff97aeda83b706fc83bc663722b2ea751a9dedd5c3",
+      "source_unchanged": true
+    }
+  ],
+  "source_verification": {
+    "all_match": true,
+    "cells": [
+      {
+        "id": "cycloaddition--gpt-6-luna",
+        "phase": "failed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "cycloaddition--gpt-6.1-sol",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "cycloaddition--gpt-6.1-terra",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "epoxidation--gpt-6-luna",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "epoxidation--gpt-6.1-sol",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "epoxidation--gpt-6.1-terra",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "furan--gpt-6-luna",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "furan--gpt-6.1-sol",
+        "phase": "failed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "furan--gpt-6.1-terra",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "hydride--gpt-6-luna",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "hydride--gpt-6.1-sol",
+        "phase": "failed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "hydride--gpt-6.1-terra",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "iodination--gpt-6-luna",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "iodination--gpt-6.1-sol",
+        "phase": "failed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "iodination--gpt-6.1-terra",
+        "phase": "failed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "quaternary--gpt-6-luna",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "quaternary--gpt-6.1-sol",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      },
+      {
+        "id": "quaternary--gpt-6.1-terra",
+        "phase": "completed",
+        "python_and_text_files_checked": 97,
+        "mismatches": []
+      }
+    ]
+  },
+  "dollar_cost": null,
+  "new_usage": {
+    "input_tokens": 1158194,
+    "output_tokens": 136934,
+    "cached_input_tokens": 86400,
+    "calls": 123,
+    "calls_missing_usage": 0,
+    "seconds": 3130.7605357893626,
+    "total_tokens": 1295128
+  },
+  "hpc_accounting": {
+    "jobs": [
+      {
+        "raw_job_id": "2319813",
+        "array_job_id": "2319813_0",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 299,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319819",
+        "array_job_id": "2319818_1",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 285,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319820",
+        "array_job_id": "2319818_2",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 400,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319845",
+        "array_job_id": "2319818_3",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 278,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319846",
+        "array_job_id": "2319818_4",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 326,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319854",
+        "array_job_id": "2319818_5",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 473,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319869",
+        "array_job_id": "2319818_6",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 158,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319880",
+        "array_job_id": "2319818_7",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 173,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319818",
+        "array_job_id": "2319818_8",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 205,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319886",
+        "array_job_id": "2319885_9",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 252,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319887",
+        "array_job_id": "2319885_10",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 240,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319890",
+        "array_job_id": "2319885_11",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 317,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319897",
+        "array_job_id": "2319885_12",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 288,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319903",
+        "array_job_id": "2319885_13",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 273,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319908",
+        "array_job_id": "2319885_14",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 353,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319913",
+        "array_job_id": "2319885_15",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 122,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319914",
+        "array_job_id": "2319885_16",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 274,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      },
+      {
+        "raw_job_id": "2319885",
+        "array_job_id": "2319885_17",
+        "slurm_state": "COMPLETED",
+        "allocated_seconds": 352,
+        "allocated_resources": "billing=4,cpu=4,gres/gpu:a30=1,gres/gpu=1,mem=32G,node=1"
+      }
+    ],
+    "allocated_a30_seconds": 5068,
+    "dollar_cost": null,
+    "scope": "Only the 18 original-Yufan selected-page jobs in this expansion. Slurm COMPLETED is process completion, not proof that the extraction exported successfully."
+  },
+  "input_verification": {
+    "actual_pngs_checked": 18,
+    "all_match": true,
+    "same_ground_truth_as_focused": true
+  }
+}

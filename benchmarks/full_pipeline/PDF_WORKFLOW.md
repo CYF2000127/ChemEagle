@@ -1,9 +1,12 @@
 # PDF evidence workflow
 
-The expanded six-PDF, three-model comparison (including GPT-6.1 Sol), two bounded
-HPC hybrid runs, token accounting, and saved-stage assembly fixes are documented
-in [EXPANDED_COMPARISON.md](EXPANDED_COMPARISON.md). The three-PDF results below
-remain the earlier development snapshot.
+The expanded six-PDF, three-model comparison (including GPT-6.1 Sol) now pairs
+the focused workflow with 18 selected-page runs of Yufan's unmodified upstream.
+The earlier two modified-fork hybrid runs, token accounting, and saved-stage
+assembly fixes remain separately labelled in
+[EXPANDED_COMPARISON.md](EXPANDED_COMPARISON.md). Original-source methodology and
+page-level results are in [YUFAN_MODEL_COMPARISON.md](YUFAN_MODEL_COMPARISON.md).
+The three-PDF results below remain the earlier development snapshot.
 
 The hybrid fork accepts native PDF input through `pdf_evidence.py`. Poppler is
 required (`pdfinfo`, `pdftotext`, `pdftoppm`). Heavy chemistry models remain in the
