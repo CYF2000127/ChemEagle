@@ -3,6 +3,7 @@ import pytesseract
 from chemrxnextractor import RxnExtractor
 from openai import AzureOpenAI, OpenAI
 import llm_client as llm
+from extraction_quality import parse_specialist_json
 from typing import Optional
 model_dir = "./cre_models_v0.1"
 rxn_extractor = RxnExtractor(model_dir)
@@ -594,7 +595,7 @@ Here is my step-by-step analysis:
         raw_content = response1.choices[0].message.content
         if raw_content:
             try:
-                return json.loads(raw_content)
+                return parse_specialist_json(raw_content)
             except json.JSONDecodeError:
                 return {"content": raw_content}
         return {}
@@ -631,7 +632,7 @@ Here is my step-by-step analysis:
 
     raw_content = response2.choices[0].message.content
     try:
-        return json.loads(raw_content)
+        return parse_specialist_json(raw_content)
     except json.JSONDecodeError:
         print(f"[WARN] text_extraction_agent: failed to parse JSON, returning raw text. First 500 chars:\n{raw_content[:500]}")
         return {"annotated_text": raw_content}

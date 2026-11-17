@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from extraction_quality import audit_record, audit_graphs, parse_pdf_json
-from experiment_ledger import Checkpoints, Ledger, compact, observations_from_records, reaction_records
+from experiment_ledger import Checkpoints, Ledger, compact, observations_from_records, reaction_records, coalesce_metric_observations
 
 
 class PreservationRun:
@@ -59,9 +59,13 @@ class PreservationRun:
                 '"source_reference":null,"outcome_label":"reported","evidence":'
                 '[{"bbox":[0,0,1,1],"quote":"visible label/outcome"}]}]}. '
                 'Use normalized full-image boxes. Use source_reference null unless a table/figure designation '
-                'is explicitly visible. Separate measurements for the same entry using outcome_label. '
+                'is explicitly visible. Yield, ee, er and dr for one experimental row are fields of ONE entry, '
+                'not separate entries. Use outcome_label "reported" normally; separate entries only for '
+                'explicitly different runs or conditions, naming those conditions in outcome_label. '
                 'Do not turn reagent/catalyst definition drawings into experiments.')
-            self.ledger.inventory(result.get('entries', []), 'independent_image')
+            normalized = coalesce_metric_observations(result.get('entries', []))
+            self.store.save('image_inventory_normalized', normalized)
+            self.ledger.inventory(normalized, 'independent_image')
         except Exception as exc:
             self.store.save('inventory_error', {'type': type(exc).__name__})
         self.store.save('inventory', list(self.ledger.entries.values()))

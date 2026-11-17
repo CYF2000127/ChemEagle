@@ -1,5 +1,10 @@
 # PDF evidence workflow
 
+The expanded six-PDF, three-model comparison (including GPT-6.1 Sol), two bounded
+HPC hybrid runs, token accounting, and saved-stage assembly fixes are documented
+in [EXPANDED_COMPARISON.md](EXPANDED_COMPARISON.md). The three-PDF results below
+remain the earlier development snapshot.
+
 The hybrid fork accepts native PDF input through `pdf_evidence.py`. Poppler is
 required (`pdfinfo`, `pdftotext`, `pdftoppm`). Heavy chemistry models remain in the
 existing hybrid environment; preparation and quality checking do not load them.

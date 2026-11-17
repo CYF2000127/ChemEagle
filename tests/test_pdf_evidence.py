@@ -1,7 +1,7 @@
 import json
 import pytest
-from experiment_ledger import Ledger
-from extraction_quality import audit_record, usage_report, parse_pdf_json
+from experiment_ledger import Ledger, coalesce_metric_observations
+from extraction_quality import audit_record, usage_report, parse_pdf_json, parse_specialist_json
 from pdf_evidence import prepare_pdf
 
 
@@ -39,3 +39,53 @@ def test_literal_pdf_controls_are_preserved_without_repairing_chemical_json():
     assert data['smiles'] == 'COc1ccco1' and warnings
     with pytest.raises(json.JSONDecodeError):
         parse_pdf_json('{"reactions":[{"smiles":"CO"} }')
+
+
+def test_specialist_prose_is_retained_and_ambiguous_answers_are_rejected():
+    raw = 'The spans lack text. I will align them with the caption.{"reactions":[{"er":"86:14","smiles":"CCO"}]}'
+    parsed = parse_specialist_json(raw)
+    assert parsed['reactions'] == [{'er': '86:14', 'smiles': 'CCO'}]
+    assert parsed['_response_parse']['raw'] == raw
+    for invalid in ('First {"yield":74} then {"yield":72}',
+                    'Result {"reactions":[{"smiles":"CCO"} }',
+                    'Result {"yield":74} unfinished explanation',
+                    'First [74] then {"yield":72}'):
+        with pytest.raises(json.JSONDecodeError):
+            parse_specialist_json(invalid)
+
+
+def test_quality_audit_does_not_promote_pending_ledger_placeholders():
+    row = audit_record({'entry_label': '3i', 'reactants': [], 'products': [],
+                        'disposition': 'awaiting_review'}, '3i 74% yield')
+    assert row['disposition'] == 'awaiting_review'
+    assert any(issue['field'] == 'experiment' for issue in row['quality_issues'])
+    assert audit_record({'disposition': 'complete_checked'}, '')['disposition'] == 'extracted_unresolved'
+
+
+def test_inventory_merges_metrics_but_not_distinct_runs_or_source_regions():
+    import copy
+    row = {'entry_label': '8', 'source_reference': 'Table 1',
+           'evidence': [{'bbox': [0.5, 0.3, 0.9, 0.31], 'quote': '8 73 95'}]}
+    observations = [dict(copy.deepcopy(row), outcome_label='yield'), dict(copy.deepcopy(row), outcome_label='ee')]
+    merged = coalesce_metric_observations(observations)
+    assert len(merged) == 1 and merged[0]['outcome_label'] == 'reported'
+    assert merged[0]['merged_outcome_labels'] == ['yield', 'ee']
+    assert observations[0]['outcome_label'] == 'yield'
+    # Two yields can represent repeated experiments; never silently collapse them.
+    assert len(coalesce_metric_observations(observations + [observations[0]])) == 3
+    other_region = copy.deepcopy(observations)
+    other_region[1]['evidence'][0]['bbox'] = [0.5, 0.4, 0.9, 0.41]
+    assert len(coalesce_metric_observations(other_region)) == 2
+    explicit_runs = [dict(row, outcome_label='room temperature'), dict(row, outcome_label='-20 C')]
+    assert coalesce_metric_observations(explicit_runs) == explicit_runs
+
+
+def test_synthesis_without_outcome_metadata_reuses_one_known_row():
+    ledger = Ledger('paper', 'page').inventory([
+        {'entry_label': '13', 'source_reference': 'Table 1', 'outcome_label': 'no reaction'}], 'image')
+    ledger.inventory([{'entry_label': '13', 'source_reference': 'Table 1'}], 'synthesis')
+    assert len(ledger.entries) == 1
+    ledger.assemble([{'entry_label': '13', 'source_reference': 'Table 1', 'products': [], 'yield': 'N.R.'}])
+    assert next(iter(ledger.entries.values()))['record']['yield'] == 'N.R.'
+    ledger.inventory([{'entry_label': '13', 'source_reference': 'Table 1', 'outcome_label': '50 C'}], 'image')
+    assert len(ledger.entries) == 2

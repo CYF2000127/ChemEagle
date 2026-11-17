@@ -21,6 +21,39 @@ def compact(value):
     return value
 
 
+def coalesce_metric_observations(observations):
+    """Join metric-only duplicates anchored to the exact same labelled source row.
+
+    Different regions, repeated metrics, or condition-specific outcomes remain
+    separate. Original metric labels survive in the normalized observation.
+    """
+    rows = copy.deepcopy(observations)
+    groups = {}
+    for i, row in enumerate(rows):
+        if (not isinstance(row, dict) or not isinstance(row.get('outcome_label'), str)
+                or row['outcome_label'] not in {'yield', 'ee', 'er', 'dr'}):
+            continue
+        evidence = row.get('evidence')
+        if not row.get('entry_label') or not row.get('source_reference') or not isinstance(evidence, list):
+            continue
+        located = any(isinstance(e, dict) and isinstance(e.get('bbox'), list)
+                      and len(e['bbox']) == 4 and all(type(v) in (int, float) for v in e['bbox'])
+                      and 0 <= e['bbox'][0] < e['bbox'][2] <= 1
+                      and 0 <= e['bbox'][1] < e['bbox'][3] <= 1 for e in evidence)
+        if located:
+            key = digest([row['entry_label'], row['source_reference'], evidence])
+            groups.setdefault(key, []).append(i)
+    removed = set()
+    for indices in groups.values():
+        labels = [rows[i]['outcome_label'] for i in indices]
+        if len(labels) < 2 or len(set(labels)) != len(labels):
+            continue
+        rows[indices[0]]['outcome_label'] = 'reported'
+        rows[indices[0]]['merged_outcome_labels'] = labels
+        removed.update(indices[1:])
+    return [row for i, row in enumerate(rows) if i not in removed]
+
+
 class Checkpoints:
     def __init__(self, directory, source, settings):
         self.manifest = {'version': VERSION, 'source_sha256': hashlib.sha256(Path(source).read_bytes()).hexdigest(),
@@ -51,6 +84,13 @@ class Ledger:
                 continue
             key = [self.paper_id, obs.get('source_reference') or self.region,
                    str(obs['entry_label']).strip(), str(obs.get('outcome_label') or 'reported')]
+            if not obs.get('outcome_label'):
+                known = [e for e in self.entries.values()
+                         if e['source_reference'] == key[1] and e['entry_label'] == key[2]]
+                if len(known) == 1:
+                    # Missing metadata does not create a second version of one
+                    # already identified row (e.g. a "no reaction" table entry).
+                    key[3] = known[0]['outcome_label']
             identifier = 'exp-' + digest(key)[:24]
             item = self.entries.setdefault(identifier, {
                 'experiment_id': identifier, 'paper_id': self.paper_id, 'source_reference': key[1],

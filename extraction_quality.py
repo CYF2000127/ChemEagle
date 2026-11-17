@@ -7,6 +7,8 @@ import re
 def audit_record(record, source_text):
     row = copy.deepcopy(record)
     issues = []
+    if not row.get('reactants') and not row.get('products'):
+        issues.append({'field': 'experiment', 'reason': 'No assembled reactant or product record; review required'})
     evidence = row.get('field_evidence', {})
     for field in ('yield', 'ee', 'er', 'dr', 'temperature', 'solvent', 'catalyst_loading'):
         value = row.get(field)
@@ -38,7 +40,10 @@ def audit_record(record, source_text):
                 compound['smiles'] = None
                 issues.append({'field': role, 'reason': 'Unresolved stereochemistry is not an exact graph'})
     row['quality_issues'] = issues
-    row['disposition'] = 'extracted_unresolved'
+    # The ledger's pending rows must remain pending after mechanical auditing.
+    # A model-provided "complete_checked" claim still cannot pass this gate.
+    if row.get('disposition') != 'awaiting_review':
+        row['disposition'] = 'extracted_unresolved'
     return row
 
 
@@ -72,6 +77,25 @@ def parse_pdf_json(raw):
         if not exc.msg.startswith('Invalid control character'):
             raise
         return json.loads(raw, strict=False), ['Literal PDF control characters preserved from model strings']
+
+
+def parse_specialist_json(raw):
+    """Read one complete JSON object after prose; retain the unmodified response.
+
+    Never merge objects, fill missing brackets, or change chemical values. The
+    full remaining suffix must parse, so multiple answers stay unresolved.
+    """
+    try:
+        value, warnings = parse_pdf_json(raw)
+    except json.JSONDecodeError:
+        start = raw.find('{')
+        if start <= 0 or any(c in raw[:start] for c in '[]}'):
+            raise
+        value, warnings = parse_pdf_json(raw[start:])
+        warnings = ['Prose before a single complete JSON object retained in raw response'] + warnings
+    if warnings and isinstance(value, dict):
+        value['_response_parse'] = {'warnings': warnings, 'raw': raw}
+    return value
 
 
 def audit_graphs(record):
