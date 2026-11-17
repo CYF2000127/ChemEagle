@@ -43,6 +43,7 @@ class Ledger:
         self.paper_id, self.region = paper_id, region
         self.entries = {}
         self.history = []
+        self.unassigned_structures = []
 
     def inventory(self, observations, method):
         for obs in observations:
@@ -93,8 +94,10 @@ class Ledger:
         for label, smiles in structures.items():
             matching = [e for e in self.entries.values() if e['entry_label'] == label]
             if not matching:
-                self.inventory([{'entry_label': label, 'evidence': [], 'recognized_smiles': smiles}], 'recognizer')
-                matching = [e for e in self.entries.values() if e['entry_label'] == label]
+                candidate = {'label': label, 'smiles': smiles, 'status': 'role_unresolved'}
+                if candidate not in self.unassigned_structures:
+                    self.unassigned_structures.append(candidate)
+                continue
             for entry in matching:
                 entry.setdefault('recognized_candidates', []).append({'label': label, 'smiles': smiles})
 
@@ -157,7 +160,8 @@ class Ledger:
                 row['recognized_candidates'] = copy.deepcopy(entry['recognized_candidates'])
             rows.append(row)
         return {'reactions': rows, 'entry_ledger': list(self.entries.values()),
-                'unassigned_candidates': list(unmatched), 'recovery_history': self.history,
+                'unassigned_candidates': list(unmatched), 'unassigned_structures': self.unassigned_structures,
+                'recovery_history': self.history,
                 'completeness': {'inventoried': len(self.entries), 'accounted_for': len(self.entries),
                                  'complete_checked': 0,
                                  'inventory_disagreements': [e['experiment_id'] for e in self.entries.values()
