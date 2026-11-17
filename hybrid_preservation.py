@@ -87,6 +87,9 @@ class PreservationRun:
                 'Return {"experiment_id":"unchanged", "record": {"entry_label":"unchanged", '
                 '"reactants":[],"products":[],"conditions":[]}, "exclude":false, '
                 '"reason":"source-backed reason", "evidence":[{"bbox":[0,0,1,1],"quote":"visible text"}]}. '
+                'Preserve reported ee, er and dr separately. Never convert er to ee or infer an unreported measurement. '
+                'Apply the shared scheme temperature, solvent and catalyst loading unless this specific entry has '
+                'a cited override; cite both the default and override. Keep each distinct outcome separate. '
                 'Leave unknown fields null; never guess a graph. Exclude only a proven nonexperiment or duplicate. '
                 'No new entries. Evidence:\n' + json.dumps(compact(context)))
             return result
