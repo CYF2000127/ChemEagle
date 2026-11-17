@@ -1,0 +1,11 @@
+{
+  "upstream_commit": "479e81232ded6bd11dbcbc934fec27a7b9e19e1b",
+  "fork_parent": "bfbf8d133bf5119357d3fc256dfc8821451481d8",
+  "status": "source pinned; full upstream runtime and benchmark not reproduced",
+  "development_regressions": [
+    "epoxidation 3ai/3aj",
+    "iodination 3i/3j",
+    "Table 1 catalyst"
+  ],
+  "large_batches": "not launched; user requested few tests"
+}
