@@ -4,6 +4,12 @@ This change belongs to our ChemEAGLE fork. It extends `main.ChemEagle`, the hybr
 specialist-agent route inherited from Yufan. The earlier cloud Worker changes are
 separate. The deprecated `ChemEagle_azure` route does not yet use the ledger.
 
+The selected-page upstream comparison and later fork replay results are in
+[EXPANDED_COMPARISON.md](EXPANDED_COMPARISON.md). Those historical runs predate
+this upstream PR branch. Porting to upstream's confidence wrapper additionally
+requires forwarding preservation options to `_run_chemeagle`; the PR includes
+that wiring and an offline wrapper check. It has not had another full GPU run.
+
 ## Implemented first priority
 
 - Independent image inventory before specialists, optionally reconciled with a
@@ -65,8 +71,8 @@ their filenames exist.
 Three small offline regression tests cover the named disappearance patterns
 (`3ai/3aj`, `3i/3j`), unresolved Table 1 catalyst, ambiguous outcomes, recovery
 bounds and raw-artifact preservation. These are regression fixtures, **not** a
-reproduction of those papers with the GPU pipeline. No new API or HPC jobs were
-started for this change.
+reproduction of those papers with the GPU pipeline. No new API or HPC jobs were started for the initial ledger change; the later
+selected-page runs are documented in the linked comparison.
 
 ## Remaining plan work — not claimed complete
 

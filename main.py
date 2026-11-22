@@ -132,11 +132,18 @@ def ChemEagle(
         artifacts: optional dict that receives the planner output, the executed agents
             with their results, failures and the raw final reply, for evaluation. With the
             scorer on it also receives ``confidence`` (features, scores, the checker's raw reply).
+        preserve_entries: inventory entries and retain unresolved rows (default True).
+        entry_inventory: optional parser entries to reconcile with the image inventory.
+        source_context: PDF page, reference-page and supplied SI evidence.
+        checkpoint_dir: directory for immutable extraction-stage checkpoints.
+        recovery_budget: at most four semantic recovery requests per image.
     """
     use_confidence = confidence.env_switch(use_confidence, "CHEMEAGLE_CONFIDENCE", True)
     run_kwargs = dict(model_name=model_name, base_url=base_url, api_key=api_key,
                       use_plan_observer=use_plan_observer, use_action_observer=use_action_observer,
-                      use_network=use_network)
+                      use_network=use_network, preserve_entries=preserve_entries,
+                      entry_inventory=entry_inventory, source_context=source_context,
+                      checkpoint_dir=checkpoint_dir, recovery_budget=recovery_budget)
     if not use_confidence:
         return _run_chemeagle(image_path, artifacts=artifacts, **run_kwargs)
 
@@ -177,6 +184,11 @@ def _run_chemeagle(
     use_action_observer: bool = False,
     use_network: Optional[bool] = None,
     artifacts: Optional[dict] = None,
+    preserve_entries: bool = True,
+    entry_inventory: Optional[list] = None,
+    source_context: Optional[dict] = None,
+    checkpoint_dir: str = "outputs/entry-checkpoints",
+    recovery_budget: int = 4,
 ) -> dict:
     """The extraction itself (planner, agents, final synthesis, post-verification);
     ChemEagle adds the optional confidence scorer around it. Arguments as in ChemEagle."""
