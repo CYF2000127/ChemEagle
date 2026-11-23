@@ -26,6 +26,7 @@ from get_text_agent import text_extraction_agent
 import get_confidence as confidence
 import llm_client as llm
 import traceback
+from hybrid_preservation import PreservationRun
 from chemietoolkit.helper import (_clean_agent_name, _parse_planner_output, _resolve_ordered_agents,
                                  fallback_validate_and_fix_smiles_in_dict, fallback_resolve_condition_smiles_in_data,
                                  fallback_resolve_reactant_product_smiles_in_data, post_verification,
@@ -86,6 +87,11 @@ def ChemEagle(
     confidence_llm: Optional[bool] = None,
     confidence_checker: Optional[str] = None,
     artifacts: Optional[dict] = None,
+    preserve_entries: bool = False,
+    entry_inventory: Optional[list] = None,
+    source_context: Optional[dict] = None,
+    checkpoint_dir: str = "outputs/entry-checkpoints",
+    recovery_budget: int = 4,
 ) -> dict:
     """ChemEagle over any OpenAI-compatible endpoint (replaces the deprecated
     Azure OpenAI route of ``ChemEagle_azure``). Every LLM call goes through
@@ -126,11 +132,18 @@ def ChemEagle(
         artifacts: optional dict that receives the planner output, the executed agents
             with their results, failures and the raw final reply, for evaluation. With the
             scorer on it also receives ``confidence`` (features, scores, the checker's raw reply).
+        preserve_entries: inventory entries and retain unresolved rows (default False).
+        entry_inventory: optional parser entries to reconcile with the image inventory.
+        source_context: PDF page, reference-page and supplied SI evidence.
+        checkpoint_dir: directory for immutable extraction-stage checkpoints.
+        recovery_budget: at most four semantic recovery requests per image.
     """
     use_confidence = confidence.env_switch(use_confidence, "CHEMEAGLE_CONFIDENCE", True)
     run_kwargs = dict(model_name=model_name, base_url=base_url, api_key=api_key,
                       use_plan_observer=use_plan_observer, use_action_observer=use_action_observer,
-                      use_network=use_network)
+                      use_network=use_network, preserve_entries=preserve_entries,
+                      entry_inventory=entry_inventory, source_context=source_context,
+                      checkpoint_dir=checkpoint_dir, recovery_budget=recovery_budget)
     if not use_confidence:
         return _run_chemeagle(image_path, artifacts=artifacts, **run_kwargs)
 
@@ -171,6 +184,11 @@ def _run_chemeagle(
     use_action_observer: bool = False,
     use_network: Optional[bool] = None,
     artifacts: Optional[dict] = None,
+    preserve_entries: bool = False,
+    entry_inventory: Optional[list] = None,
+    source_context: Optional[dict] = None,
+    checkpoint_dir: str = "outputs/entry-checkpoints",
+    recovery_budget: int = 4,
 ) -> dict:
     """The extraction itself (planner, agents, final synthesis, post-verification);
     ChemEagle adds the optional confidence scorer around it. Arguments as in ChemEagle."""
@@ -196,6 +214,10 @@ def _run_chemeagle(
             return base64.b64encode(f.read()).decode("utf-8")
 
     base64_image = encode_image(image_path)
+    preservation = None
+    if preserve_entries:
+        preservation = PreservationRun(image_path, client, model_name, _mk, checkpoint_dir, source_context)
+        preservation.inventory(entry_inventory)
 
     with open('./prompt/prompt_final_simple_version.txt', 'r', encoding='utf-8') as prompt_file:
     #with open('./prompt/prompt_data.txt', 'r', encoding='utf-8') as prompt_file:
@@ -325,12 +347,13 @@ def _run_chemeagle(
             "arguments": {"image_path": image_path},
             "result": agent_result,
         })
+        prompt_result = preservation.stage(f'agent-{idx}', agent_result) if preservation else agent_result
         results.append({
             'role': 'tool',
             'name': agent_name,
             'content': json.dumps({
                 'image_path': image_path,
-                agent_name: agent_result,
+                agent_name: prompt_result,
             }),
             'tool_call_id': f"agent_call_{idx}",
         })
@@ -354,15 +377,19 @@ def _run_chemeagle(
                 idx = len(execution_logs)
                 execution_logs.append({"id": f"agent_call_{idx}", "name": fallback_name,
                                        "arguments": {"image_path": image_path}, "result": fallback_result})
+                fallback_prompt = preservation.stage(f'agent-{idx}', fallback_result) if preservation else fallback_result
                 results.append({'role': 'tool', 'name': fallback_name,
-                                'content': json.dumps({'image_path': image_path, fallback_name: fallback_result}),
+                                'content': json.dumps({'image_path': image_path, fallback_name: fallback_prompt}),
                                 'tool_call_id': f"agent_call_{idx}"})
                 observer_notes.append(f"{fallback_name} was run although the plan omitted it: {fallback_reason}")
 
-    print(f'[dispatch] results: {results}')
+    print(f'[dispatch] completed {len(results)} specialist outputs')
 
     if artifacts is not None:
         artifacts.update(ordered_agents=list(ordered_agents), execution_logs=execution_logs, failed_agents=list(failed_agents))
+    if not results and preservation:
+        return preservation.finish({'reactions': []}, get_molecular_agent.label_structures(image_path),
+                                   max(0, min(4, recovery_budget)))
     if not results:
         raise RuntimeError(
             "All planned agents failed, nothing left to synthesise: "
@@ -449,16 +476,33 @@ def _run_chemeagle(
             'content': f"Note: checks of the agent runs above reported possible problems: {observer_reason}. Verify each point against the figure, correct the agent output where the point holds, and ignore points the figure contradicts.",
         })
 
-    response, _ = llm.final_json_call(
-        client, model_name, messages_list, _mk,
-        tool_map=None, tool_arg=image_path, retry=None, stream=True)
+    if preservation:
+        messages_list.append({'role': 'user', 'content':
+            'Account for every inventoried entry. Use its exact entry_label, source_reference and experiment_id. '
+            'Keep different outcomes separate. Never omit an unresolved entry. Inventory: ' +
+            json.dumps(list(preservation.ledger.entries.values()), ensure_ascii=False)})
+    try:
+        response, _ = llm.final_json_call(
+            client, model_name, messages_list, _mk,
+            tool_map=None, tool_arg=image_path, retry=None, stream=True)
+    except Exception as exc:
+        if not preservation:
+            raise
+        preservation.store.save('synthesis_error', {'type': type(exc).__name__})
+        return preservation.finish({'reactions': []}, get_molecular_agent.label_structures(image_path),
+                                   max(0, min(4, recovery_budget)))
 
     try:
         gpt_output = _coerce_final_output(llm.loads_lenient(response.choices[0].message.content))   # tolerates raw backslashes (E/Z SMILES) and fences
     except json.JSONDecodeError as _e:
         print(f"ERROR [agent]: final synthesis JSON unparsable ({_e}); raw content saved to "
               f"{llm.dump_unparsable(response.choices[0].message.content, 'final_synthesis')}")
-        raise   # tolerates raw backslashes (E/Z SMILES) and fences
+        if not preservation:
+            raise
+        preservation.store.save('unparsable_final', {'raw': response.choices[0].message.content})
+        gpt_output = {'reactions': []}
+    if preservation:
+        preservation.store.save("synthesis", gpt_output)
     gpt_output = post_verification(gpt_output,
                                    label_structures=get_molecular_agent.label_structures(image_path),
                                    drawn_conditions=drawn_condition_structures(image_path))
@@ -472,6 +516,9 @@ def _run_chemeagle(
     if artifacts is not None:
         artifacts.update(text_extraction_result=text_extraction_result, observer_notes=list(observer_notes),
                          failed_agents=list(failed_agents), final_raw=response.choices[0].message.content)
+    if preservation:
+        gpt_output = preservation.finish(gpt_output, get_molecular_agent.label_structures(image_path),
+                                       max(0, min(4, recovery_budget)))
     print(gpt_output)
     return gpt_output
 

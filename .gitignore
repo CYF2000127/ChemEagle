@@ -15,3 +15,6 @@ unparsable_json/
 py2opsin_temp_input.txt
 outputs_new_smoke/
 e2e_compare/
+
+# Hybrid entry inventory and model artifacts
+outputs/entry-checkpoints/
