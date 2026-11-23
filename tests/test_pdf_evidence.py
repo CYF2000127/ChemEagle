@@ -1,8 +1,11 @@
 import json
+import sys
+from types import SimpleNamespace
+
 import pytest
 from experiment_ledger import Ledger, coalesce_metric_observations
-from extraction_quality import audit_record, usage_report, parse_pdf_json, parse_specialist_json
-from pdf_evidence import prepare_pdf
+from extraction_quality import audit_graphs, audit_record, parse_pdf_json, parse_specialist_json, usage_report
+from pdf_evidence import extract_pdf, prepare_pdf
 
 
 def test_unreported_conversion_and_unresolved_stereo_are_not_exported_as_exact():
@@ -89,3 +92,62 @@ def test_synthesis_without_outcome_metadata_reuses_one_known_row():
     assert next(iter(ledger.entries.values()))['record']['yield'] == 'N.R.'
     ledger.inventory([{'entry_label': '13', 'source_reference': 'Table 1', 'outcome_label': '50 C'}], 'image')
     assert len(ledger.entries) == 2
+
+
+def test_selected_page_entry_point_enables_preservation(monkeypatch, tmp_path):
+    packet = {'image': 'page.png', 'page_number': 1, 'paper_sha256': 'paper'}
+    monkeypatch.setattr('pdf_evidence.prepare_pdf', lambda *args: [packet])
+    received = {}
+
+    def capture(image, **options):
+        received.update(options)
+        return {'reactions': []}
+
+    monkeypatch.setitem(sys.modules, 'main', SimpleNamespace(ChemEagle=capture))
+    result = extract_pdf('article.pdf', tmp_path, [1])
+    assert received['preserve_entries'] is True
+    assert received['source_context'] == packet
+    assert result['pages'][0]['status'] == 'completed'
+
+
+def test_audit_checks_exported_outcome_values_against_the_cited_text():
+    raw = {
+        'reactants': [{'smiles': 'CCO'}],
+        'additional_info': [
+            {'role': 'yield', 'text': '88%'},
+            {'role': 'er', 'text': '86:14'},
+            {'role': 'ee', 'text': '72%'},
+        ],
+        'conditions': [{'role': 'temperature', 'text': '25 °C'}],
+        'field_evidence': {
+            'yield': [{'quote': '12% yield'}],
+            'er': [{'quote': '86 : 14 er'}],
+            'ee': [{'quote': '66% ee'}],
+            'temperature': [{'quote': '25 °C'}],
+        },
+    }
+    row = audit_record(raw, '12% yield at 25 °C, 86 : 14 er, 66% ee')
+    assert {issue['field'] for issue in row['quality_issues']} == {'yield', 'ee'}
+    assert row['additional_info'][2]['text'] is None
+    assert row['derived_or_unverified']['ee'] == '72%'
+    assert raw['additional_info'][2]['text'] == '72%'
+
+
+def test_graph_audit_quarantines_invalid_catalyst_smiles_in_conditions():
+    raw = {'conditions': [{'role': 'catalyst', 'label': 'C1', 'smiles': 'C('},
+                          {'role': 'solvent', 'text': 'toluene'}]}
+    row = audit_graphs(raw)
+    catalyst, solvent = row['conditions']
+    assert catalyst['smiles'] is None
+    assert catalyst['rejected_graph_candidates']['smiles'] == 'C('
+    assert catalyst['chemical_identity_verified'] is False
+    assert solvent == raw['conditions'][1]
+    assert raw['conditions'][0]['smiles'] == 'C('
+
+
+def test_audit_preserves_explicit_not_determined_selectivity():
+    row = audit_record({
+        'additional_info': [{'role': 'er', 'text': '86:14'}, {'role': 'ee', 'text': 'ND'}],
+    }, '')
+    assert row['additional_info'][1]['text'] == 'ND'
+    assert 'derived_or_unverified' not in row

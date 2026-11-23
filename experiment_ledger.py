@@ -78,25 +78,44 @@ class Ledger:
         self.history = []
         self.unassigned_structures = []
 
+    def _matches_source(self, entry, record):
+        return all(not record.get(key) or str(record[key]).strip() == entry[key]
+                   for key in ('source_reference', 'outcome_label'))
+
+    def _known_entry(self, record):
+        identifier = record.get('experiment_id')
+        entry = self.entries.get(identifier) if isinstance(identifier, str) else None
+        label = str(record.get('entry_label') or '').strip()
+        if entry and (not label or label == entry['entry_label']) and self._matches_source(entry, record):
+            return entry
+        return None
+
     def inventory(self, observations, method):
         for obs in observations:
-            if not isinstance(obs, dict) or not str(obs.get('entry_label') or '').strip():
+            if not isinstance(obs, dict):
                 continue
-            key = [self.paper_id, obs.get('source_reference') or self.region,
-                   str(obs['entry_label']).strip(), str(obs.get('outcome_label') or 'reported')]
-            if not obs.get('outcome_label'):
-                known = [e for e in self.entries.values()
-                         if e['source_reference'] == key[1] and e['entry_label'] == key[2]]
-                if len(known) == 1:
-                    # Missing metadata does not create a second version of one
-                    # already identified row (e.g. a "no reaction" table entry).
-                    key[3] = known[0]['outcome_label']
-            identifier = 'exp-' + digest(key)[:24]
-            item = self.entries.setdefault(identifier, {
-                'experiment_id': identifier, 'paper_id': self.paper_id, 'source_reference': key[1],
-                'entry_label': key[2], 'outcome_label': key[3], 'observations': [],
-                'disposition': 'awaiting_review', 'record': None, 'attempts': [],
-            })
+            label = str(obs.get('entry_label') or '').strip()
+            if obs.get('experiment_id'):
+                item = self._known_entry(obs)
+                if item is None:
+                    continue
+            elif label:
+                reference = str(obs.get('source_reference') or self.region).strip()
+                outcome = str(obs.get('outcome_label') or 'reported').strip()
+                if not obs.get('outcome_label'):
+                    known = [e for e in self.entries.values()
+                             if e['source_reference'] == reference and e['entry_label'] == label]
+                    if len(known) == 1:
+                        # Missing metadata does not create a second version of this row.
+                        outcome = known[0]['outcome_label']
+                identifier = 'exp-' + digest([self.paper_id, reference, label, outcome])[:24]
+                item = self.entries.setdefault(identifier, {
+                    'experiment_id': identifier, 'paper_id': self.paper_id, 'source_reference': reference,
+                    'entry_label': label, 'outcome_label': outcome, 'observations': [],
+                    'disposition': 'awaiting_review', 'record': None, 'attempts': [],
+                })
+            else:
+                continue
             observation = {'method': method, **copy.deepcopy(obs)}
             if observation not in item['observations']:
                 item['observations'].append(observation)
@@ -107,18 +126,20 @@ class Ledger:
         for record in candidates:
             if not isinstance(record, dict):
                 continue
-            label = str(record.get('entry_label') or '').strip()
-            labels = {str(c.get('label') or '').strip() for c in record.get('products', []) if isinstance(c, dict)}
-            if label:
-                labels = {label}
-            matches = [e for e in self.entries.values()
-                       if (record.get('experiment_id') == e['experiment_id'] or e['entry_label'] in labels)
-                       and (not record.get('source_reference') or record['source_reference'] == e['source_reference'])
-                       and (not record.get('outcome_label') or str(record['outcome_label']) == e['outcome_label'])]
-            if len(matches) != 1:
+            if record.get('experiment_id'):
+                entry = self._known_entry(record)
+            else:
+                label = str(record.get('entry_label') or '').strip()
+                labels = {label} if label else {
+                    str(c.get('label') or '').strip()
+                    for c in record.get('products') or [] if isinstance(c, dict)
+                }
+                matches = [e for e in self.entries.values()
+                           if e['entry_label'] in labels and self._matches_source(e, record)]
+                entry = matches[0] if len(matches) == 1 else None
+            if entry is None:
                 unmatched.append(copy.deepcopy(record))
                 continue
-            entry = matches[0]
             if entry['record'] is not None and only_missing:
                 continue
             if entry['record'] is not None:
@@ -160,23 +181,21 @@ class Ledger:
                 accepted = False
                 if isinstance(proposal, dict) and proposal.get('experiment_id') == entry['experiment_id']:
                     evidence = proposal.get('evidence')
-                    # A nonempty source quotation or located source region is required.
+                    # A located source region is required for a proposed reconstruction.
                     grounded = isinstance(evidence, list) and any(
                         isinstance(e, dict) and isinstance(e.get('bbox'), list)
                         and len(e['bbox']) == 4
                         and all(type(n) in (int, float) for n in e['bbox'])
                         and 0 <= e['bbox'][0] < e['bbox'][2] <= 1
                         and 0 <= e['bbox'][1] < e['bbox'][3] <= 1 for e in evidence)
-                    if grounded and proposal.get('reason'):
-                        if proposal.get('exclude') is True:
-                            entry['disposition'] = 'excluded_with_evidence'
-                            accepted = True
-                        elif isinstance(proposal.get('record'), dict):
-                            row = proposal['record']
-                            if row.get('entry_label') == entry['entry_label']:
-                                entry['record'] = copy.deepcopy(row)
-                                entry['disposition'] = 'extracted_unresolved'
-                                accepted = True
+                    row = proposal.get('record')
+                    # Model-only exclusions stay in the audit trail for human review.
+                    if (grounded and proposal.get('reason') and proposal.get('exclude') is not True
+                            and isinstance(row, dict) and row.get('entry_label') == entry['entry_label']
+                            and self._matches_source(entry, row)):
+                        entry['record'] = copy.deepcopy(row)
+                        entry['disposition'] = 'extracted_unresolved'
+                        accepted = True
                 attempt = {'method': method, 'proposal': proposal, 'accepted': accepted}
                 entry['attempts'].append(attempt)
                 self.history.append({'experiment_id': entry['experiment_id'], 'before': before, **attempt})
@@ -219,12 +238,18 @@ def observations_from_records(value):
     if isinstance(value, dict):
         if 'products' in value and isinstance(value['products'], list):
             label = value.get('entry_label')
-            labels = [label] if label else [c.get('label') for c in value['products'] if isinstance(c, dict)]
+            identifier = value.get('experiment_id')
+            labels = [label] if label or identifier else [
+                c.get('label') for c in value['products'] if isinstance(c, dict)
+            ]
             for label in labels:
-                if label:
-                    found.append({'entry_label': label, 'source_reference': value.get('source_reference'),
-                                  'outcome_label': value.get('outcome_label'),
-                                  'evidence': value.get('field_evidence', {})})
+                if label or identifier:
+                    observation = {'entry_label': label, 'source_reference': value.get('source_reference'),
+                                   'outcome_label': value.get('outcome_label'),
+                                   'evidence': value.get('field_evidence', {})}
+                    if identifier:
+                        observation['experiment_id'] = identifier
+                    found.append(observation)
         else:
             for child in value.values():
                 found.extend(observations_from_records(child))

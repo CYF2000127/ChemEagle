@@ -106,7 +106,7 @@ class PreservationRun:
                 'Preserve reported ee, er and dr separately. Never convert er to ee or infer an unreported measurement. '
                 'Apply the shared scheme temperature, solvent and catalyst loading unless this specific entry has '
                 'a cited override; cite both the default and override. Keep each distinct outcome separate. '
-                'Leave unknown fields null; never guess a graph. Exclude only a proven nonexperiment or duplicate. '
+                'Leave unknown fields null; never guess a graph. Suggest exclusions with evidence for human review. '
                 'For every condition/outcome return field_evidence as {field:[{quote: exact source text}]}. '
                 'No new entries. Evidence:\n' + json.dumps(compact(context)))
             return result
@@ -116,9 +116,10 @@ class PreservationRun:
         result = self.ledger.export(unmatched)
         if isinstance(candidate, dict):
             result = {**candidate, **result}
-        if self.context.get('text'):
-            source_text = self.context['text'] + '\n'.join(p.get('text', '') for p in self.context.get('reference_pages', []))
-            result['reactions'] = [audit_record(row, source_text) for row in result['reactions']]
+        support = (p for key in ('reference_pages', 'supporting_information')
+                   for p in self.context.get(key) or [])
+        source_text = '\n'.join([self.context.get('text') or '', *(p.get('text') or '' for p in support)])
+        result['reactions'] = [audit_record(row, source_text) for row in result['reactions']]
         result['reactions'] = [audit_graphs(row) for row in result['reactions']]
         result['provenance'] = self.store.manifest
         result['usage'] = self.usage

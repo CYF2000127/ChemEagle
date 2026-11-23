@@ -9,7 +9,8 @@ import pytest
 
 
 @pytest.mark.parametrize('confidence_enabled', [False, True])
-def test_public_wrapper_forwards_preservation_options(confidence_enabled):
+@pytest.mark.parametrize('preservation_options', [{}, {'preserve_entries': True}])
+def test_public_wrapper_forwards_preservation_options(confidence_enabled, preservation_options):
     tree = ast.parse((Path(__file__).parents[1] / 'main.py').read_text())
     public = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'ChemEagle')
     internal = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_run_chemeagle')
@@ -36,10 +37,11 @@ def test_public_wrapper_forwards_preservation_options(confidence_enabled):
     inventory = [{'entry_label': '8'}]
     output = namespace['ChemEagle'](
         'page.png', model_name='test', use_confidence=confidence_enabled,
-        confidence_checker='test', preserve_entries=False, entry_inventory=inventory,
-        source_context=context, checkpoint_dir='custom/checkpoints', recovery_budget=0)
+        confidence_checker='test', entry_inventory=inventory,
+        source_context=context, checkpoint_dir='custom/checkpoints', recovery_budget=0,
+        **preservation_options)
     received = output['received']
-    assert received['preserve_entries'] is False
+    assert received['preserve_entries'] is preservation_options.get('preserve_entries', False)
     assert received['entry_inventory'] is inventory
     assert received['source_context'] is context
     assert received['checkpoint_dir'] == 'custom/checkpoints'

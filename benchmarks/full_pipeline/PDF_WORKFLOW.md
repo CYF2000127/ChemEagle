@@ -26,7 +26,8 @@ receives bounded text with truncation disclosed. SI image-page retrieval and
 automatic reference selection remain future work.
 
 For each selected page the adapter calls the actual `main.ChemEagle` hybrid
-backend, passing current text, reference images and SI through `source_context`.
+backend with `preserve_entries=True`, passing page text, reference images and SI
+through `source_context`.
 Failures are checkpointed per page; successful pages survive. Pages with little
 embedded text are flagged as needing OCR while their images remain available to
 the vision path. This does not benchmark scanned-PDF OCR quality.

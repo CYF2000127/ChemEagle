@@ -57,6 +57,7 @@ def extract_pdf(pdf, output_dir, pages, reference_pages=(), supporting_informati
     if backend is None:
         from main import ChemEagle
         backend = ChemEagle
+        options.setdefault('preserve_entries', True)
     packets = prepare_pdf(pdf, output_dir, pages, reference_pages, supporting_information)
     results = []
     for packet in packets:

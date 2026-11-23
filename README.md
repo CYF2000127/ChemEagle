@@ -101,6 +101,10 @@ results = ChemEagle('./examples/1.png', model_name='gpt-5.6-terra')   # or any o
 print(results)
 ```
 
+Pass `preserve_entries=True` to retain unresolved experimental rows and save
+extraction checkpoints for review. See the [entry preservation guide](benchmarks/full_pipeline/README.md)
+and the [selected-page PDF workflow](benchmarks/full_pipeline/PDF_WORKFLOW.md).
+
 To run over a whole PDF instead of a single image:
 ```python
 import os

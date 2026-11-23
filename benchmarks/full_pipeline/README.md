@@ -8,7 +8,7 @@ The selected-page upstream comparison and later fork replay results are in
 [EXPANDED_COMPARISON.md](EXPANDED_COMPARISON.md). Those historical runs predate
 this upstream PR branch. Porting to upstream's confidence wrapper additionally
 requires forwarding preservation options to `_run_chemeagle`; the PR includes
-that wiring and an offline wrapper check. It has not had another full GPU run.
+that wiring and an offline wrapper check. The two-paper paired GPU pilot ran on PR head `091600b`; its results precede the current opt-in and validation fixes.
 
 ## Implemented first priority
 
@@ -26,8 +26,8 @@ that wiring and an offline wrapper check. It has not had another full GPU run.
 - Recovery permits two attempts per item and four total per image. The second
   attempt retrieves recognizer, specialist and supplied definition evidence; when
   no changed evidence is available, its model call is skipped. Original records,
-  proposals and dispositions are retained. Recovery never declares chemical
-  correctness. All recovered rows remain `extracted_unresolved`.
+  proposals and dispositions are retained. Proposed exclusions stay visible for
+  review. Reconstructed records are marked `extracted_unresolved`.
 - Each invocation has a distinct checkpoint directory under its source/config
   digest, so reruns cannot overwrite the original prediction. Completed receipts
   contain the final JSON hash. `manage.py reconcile` verifies hashes and retains
@@ -40,6 +40,7 @@ Example with the already configured OpenAI-compatible client:
 ```python
 result = ChemEagle(
     image_path,
+    preserve_entries=True,
     entry_inventory=parser_entries,
     source_context={"paper_sha256": pdf_sha256, "region_id": "page5-table1",
                     "definitions": supplied_si_definitions},
@@ -50,9 +51,10 @@ result = ChemEagle(
 
 The configured endpoint/key continues through `llm_client`; no new credential
 store is used. Inventory adds one model request per image. Set `recovery_budget=0`
-for preservation-only evaluation. Set `preserve_entries=False` for the existing
-fork behavior. The budget counts semantic recovery calls, not transport-level SDK
-retries. Existing action-observer retries remain independently configurable.
+for preservation-only evaluation. Direct `ChemEagle` calls use the existing
+image workflow by default. The selected-page PDF adapter explicitly enables
+preservation. The budget counts semantic recovery calls. The SDK manages transport
+retries separately. Existing action-observer retries remain independently configurable.
 
 ## Frozen comparisons and current evidence
 

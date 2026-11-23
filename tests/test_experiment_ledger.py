@@ -1,5 +1,5 @@
 import json
-from experiment_ledger import Ledger, Checkpoints, compact
+from experiment_ledger import Checkpoints, Ledger, compact, observations_from_records
 
 
 def test_missing_epoxidation_and_iodination_entries_survive_without_inventing_reactions():
@@ -47,3 +47,51 @@ def test_ambiguous_outcomes_checkpoint_integrity_and_prompt_compaction(tmp_path)
     store.save('recognition', raw)
     assert compact(raw) == {'smiles': 'CCO'}
     assert json.loads((store.root / 'recognition.json').read_text()) == raw
+
+
+def test_explicit_id_wins_across_tables_without_inventing_an_inventory_row():
+    ledger = Ledger('paper', 'page-3').inventory([
+        {'entry_label': '1', 'source_reference': 'Table 1'},
+        {'entry_label': '1', 'source_reference': 'Table 2'},
+    ], 'image')
+    first, second = ledger.entries.values()
+    row = {'experiment_id': first['experiment_id'], 'entry_label': '1', 'products': []}
+    ledger.inventory(observations_from_records(row), 'synthesis')
+    assert len(ledger.entries) == 2
+    assert ledger.assemble([row]) == []
+    assert first['record'] == row
+    assert second['record'] is None
+
+
+def test_unknown_id_or_conflicting_metadata_stays_unassigned():
+    ledger = Ledger('paper', 'page-3').inventory([
+        {'entry_label': '1', 'source_reference': 'Table 1'},
+    ], 'image')
+    entry, = ledger.entries.values()
+    row = {'experiment_id': entry['experiment_id'], 'entry_label': '1', 'products': []}
+    unresolved = [
+        dict(row, experiment_id='exp-unknown'),
+        dict(row, source_reference='Table 2'),
+        dict(row, entry_label='2'),
+    ]
+    ledger.inventory(observations_from_records(unresolved), 'synthesis')
+    assert len(ledger.entries) == 1
+    assert ledger.assemble(unresolved) == unresolved
+    assert entry['record'] is None
+
+
+def test_model_only_exclusions_remain_visible_for_review():
+    ledger = Ledger('paper', 'Table 1').inventory([{'entry_label': '7'}], 'image')
+
+    def suggest_exclusion(entry, method):
+        return {'experiment_id': entry['experiment_id'], 'exclude': True,
+                'reason': 'duplicate', 'evidence': [{'bbox': [0, 0, 1, 1]}]}
+
+    ledger.recover(suggest_exclusion, total_budget=1)
+    result = ledger.export()
+    row, = result['reactions']
+    assert row['entry_label'] == '7'
+    assert row['disposition'] == 'awaiting_review'
+    attempt, = result['recovery_history']
+    assert attempt['proposal']['exclude'] is True
+    assert attempt['accepted'] is False

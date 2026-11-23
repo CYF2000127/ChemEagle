@@ -87,7 +87,7 @@ def ChemEagle(
     confidence_llm: Optional[bool] = None,
     confidence_checker: Optional[str] = None,
     artifacts: Optional[dict] = None,
-    preserve_entries: bool = True,
+    preserve_entries: bool = False,
     entry_inventory: Optional[list] = None,
     source_context: Optional[dict] = None,
     checkpoint_dir: str = "outputs/entry-checkpoints",
@@ -132,7 +132,7 @@ def ChemEagle(
         artifacts: optional dict that receives the planner output, the executed agents
             with their results, failures and the raw final reply, for evaluation. With the
             scorer on it also receives ``confidence`` (features, scores, the checker's raw reply).
-        preserve_entries: inventory entries and retain unresolved rows (default True).
+        preserve_entries: inventory entries and retain unresolved rows (default False).
         entry_inventory: optional parser entries to reconcile with the image inventory.
         source_context: PDF page, reference-page and supplied SI evidence.
         checkpoint_dir: directory for immutable extraction-stage checkpoints.
@@ -184,7 +184,7 @@ def _run_chemeagle(
     use_action_observer: bool = False,
     use_network: Optional[bool] = None,
     artifacts: Optional[dict] = None,
-    preserve_entries: bool = True,
+    preserve_entries: bool = False,
     entry_inventory: Optional[list] = None,
     source_context: Optional[dict] = None,
     checkpoint_dir: str = "outputs/entry-checkpoints",
